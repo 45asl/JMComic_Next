@@ -38,6 +38,12 @@ data class ListItem(
     @SerialName("is_favorite")
     @Serializable(with = FlexBool::class) val isFavorite: Boolean = false,
     @Serializable(with = FlexBool::class) val liked: Boolean = false,
+    /**
+     * 收录日期。只在搜索结果的「最旧」排序里用到 —— 那一档官方客户端**在本地**按它重排，
+     * 而不是完全交给服务端（见 `Search.tsx` 的 `isLocalOldest`）。
+     */
+    @SerialName("adddate")
+    @Serializable(with = FlexStringOrNull::class) val addDate: String? = null,
 )
 
 /**

@@ -1,34 +1,42 @@
 package com.jmcomic_next.lyqs.ui.screens.search
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -50,6 +58,7 @@ import kotlinx.coroutines.launch
 
 data class SearchUiState(
     val query: String = "",
+    val filters: SearchFilters = SearchFilters(),
     val loading: Boolean = false,
     val error: String? = null,
     val results: List<ListItem> = emptyList(),
@@ -69,21 +78,41 @@ class SearchViewModel(private val repo: JmRepository) : ViewModel() {
     /** 跳转已被消费，清掉以免返回时反复触发。 */
     fun consumeRedirect() = _state.update { it.copy(redirectAid = null) }
 
+    /** 改动任一筛选项都立刻重搜 —— 结果已经不在屏幕上时，等用户再点一次没有意义。 */
+    fun updateFilters(transform: (SearchFilters) -> SearchFilters) {
+        _state.update { it.copy(filters = transform(it.filters)) }
+        search()
+    }
+
     fun search() {
-        val q = _state.value.query.trim()
-        if (q.isEmpty() || _state.value.loading) return
+        val s = _state.value
+        val q = s.query.trim()
+        if (q.isEmpty() || s.loading) return
+        val f = s.filters
 
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             val result = runCatching {
                 repo.bootstrap()
-                repo.search(q, page = 1)
+                repo.search(
+                    query = q,
+                    page = 1,
+                    order = f.order,
+                    type = f.type,
+                    year = f.year.takeIf { it.isNotEmpty() },
+                    month = f.month.takeIf { it.isNotEmpty() },
+                )
             }
-            _state.update { s ->
-                s.copy(
+            _state.update { prev ->
+                var items = result.getOrNull()?.page?.items.orEmpty()
+                // 「最旧」这一档官方客户端会在本地按 adddate 二次排序，照做
+                if (f.isLocalOldest) {
+                    items = items.sortedBy { it.addDate.orEmpty() }
+                }
+                prev.copy(
                     loading = false,
                     searched = true,
-                    results = result.getOrNull()?.page?.items.orEmpty(),
+                    results = items,
                     redirectAid = result.getOrNull()?.redirectAid,
                     error = result.exceptionOrNull()?.message,
                 )
@@ -95,8 +124,8 @@ class SearchViewModel(private val repo: JmRepository) : ViewModel() {
 /**
  * 搜索页。
  *
- * 目前只做关键词检索；服务端另有排序（`o`）与检索类型（`search_type`）参数，
- * 以及 `hot_tags` 热门标签 —— 留待后续做成筛选面板。
+ * 筛选条件是可用的：排序（`o`）与检索字段（`search_type`）各一行，年份/月份收在
+ * 「更多筛选」里 —— 年份有十来个取值，默认铺开会把结果挤到屏幕外。
  */
 @Composable
 fun SearchScreen(
@@ -110,6 +139,7 @@ fun SearchScreen(
     )
     val state by vm.state.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf(initialQuery) }
+    var showDateFilter by rememberSaveable { mutableStateOf(false) }
     val c = JmTheme.colors
 
     // 命中「按编号精确检索」时直接打开作品，不展示列表
@@ -137,8 +167,8 @@ fun SearchScreen(
                 input = it
                 vm.onQueryChange(it)
             },
-            modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
-            placeholder = { Text("输入作品名或作者", color = c.textTertiary) },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+            placeholder = { Text("输入作品名、作者或标签", color = c.textTertiary) },
             singleLine = true,
             trailingIcon = {
                 IconButton(onClick = { vm.search() }) {
@@ -149,6 +179,50 @@ fun SearchScreen(
             keyboardActions = KeyboardActions(onSearch = { vm.search() }),
         )
 
+        FilterRow(
+            label = "排序",
+            options = SearchFilters.Order.entries.map { it.key to it.label },
+            selected = state.filters.order,
+            enabled = !state.loading,
+            onSelect = { key -> vm.updateFilters { it.copy(order = key) } },
+        )
+
+        FilterRow(
+            label = "检索",
+            options = SearchFilters.Type.entries.map { it.key to it.label },
+            selected = state.filters.type,
+            enabled = !state.loading,
+            onSelect = { key -> vm.updateFilters { it.copy(type = key) } },
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (state.filters.year.isEmpty()) "年份：不限" else
+                    "年份：${state.filters.year}${if (state.filters.month.isEmpty()) " 年" else " 年 ${state.filters.month} 月"}",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.textTertiary,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = { showDateFilter = !showDateFilter }) {
+                Icon(
+                    imageVector = if (showDateFilter) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (showDateFilter) "收起年份筛选" else "展开年份筛选",
+                    tint = c.accent,
+                )
+            }
+        }
+
+        if (showDateFilter) {
+            DateFilterRows(
+                filters = state.filters,
+                enabled = !state.loading,
+                onChange = { year, month -> vm.updateFilters { it.copy(year = year, month = month) } },
+            )
+        }
+
         when {
             state.loading -> LoadingBox()
 
@@ -157,13 +231,13 @@ fun SearchScreen(
 
             !state.searched -> MessageState(
                 title = "搜点什么",
-                description = "支持按作品名、作者检索",
+                description = "支持按作品名、作者、标签检索",
                 icon = Icons.Filled.Search,
             )
 
             state.results.isEmpty() -> MessageState(
                 title = "没有找到相关作品",
-                description = "换个关键词试试",
+                description = "换个关键词，或调整检索字段与年份",
                 icon = Icons.Filled.Search,
             )
 
@@ -187,5 +261,75 @@ fun SearchScreen(
                 }
             }
         }
+    }
+}
+
+/** 一行筛选 chip。选中项用强调色，符合本套设计的强调方式。 */
+@Composable
+private fun FilterRow(
+    label: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    enabled: Boolean,
+    onSelect: (String) -> Unit,
+) {
+    val c = JmTheme.colors
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = c.textTertiary,
+            modifier = Modifier.padding(start = Spacing.lg, end = Spacing.sm),
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            items(options) { (key, text) ->
+                FilterChip(
+                    selected = selected == key,
+                    onClick = { if (selected != key) onSelect(key) },
+                    enabled = enabled,
+                    label = {
+                        Text(text, style = MaterialTheme.typography.labelSmall)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 年份与月份筛选。
+ *
+ * 年份范围与官方一致：2017 起至今（官方是 `currentYear - 2017 + 1` 个选项）。
+ * 月份只在选了年份之后才有意义，因此未选年份时不展示。
+ */
+@Composable
+private fun DateFilterRows(
+    filters: SearchFilters,
+    enabled: Boolean,
+    onChange: (year: String, month: String) -> Unit,
+) {
+    val currentYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
+    val years = remember(currentYear) { (currentYear downTo 2017).map { it.toString() } }
+    val months = remember { (1..12).map { it.toString() } }
+
+    FilterRow(
+        label = "年",
+        options = listOf("" to "不限") + years.map { it to it },
+        selected = filters.year,
+        enabled = enabled,
+        onSelect = { y -> onChange(y, if (y.isEmpty()) "" else filters.month) },
+    )
+
+    if (filters.year.isNotEmpty()) {
+        FilterRow(
+            label = "月",
+            options = listOf("" to "不限") + months.map { it to it },
+            selected = filters.month,
+            enabled = enabled,
+            onSelect = { m -> onChange(filters.year, m) },
+        )
     }
 }

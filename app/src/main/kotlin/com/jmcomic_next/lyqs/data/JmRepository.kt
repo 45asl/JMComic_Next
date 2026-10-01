@@ -148,6 +148,8 @@ class JmRepository(private val remote: JmRemote) {
         page: Int = 1,
         order: String? = null,
         type: String? = null,
+        year: String? = null,
+        month: String? = null,
     ): SearchResult {
         val payload = remote.get(
             JmPaths.SEARCH,
@@ -157,6 +159,8 @@ class JmRepository(private val remote: JmRemote) {
                 put("page", page.toString())
                 order?.let { put("o", it) }
                 type?.let { put("search_type", it) }
+                year?.let { put("y", it) }
+                month?.let { put("m", it) }
             },
         )
         // 搜索的 total 是字符串，而 latest 的是数字 —— 各按各的形态取，统一成 Int。
