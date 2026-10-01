@@ -65,7 +65,7 @@ private enum class MainTab(
 private const val SEARCH_PATTERN = "search?q={q}"
 private const val ARG_QUERY = "q"
 private const val ROUTE_DETAIL = "detail/{id}"
-private const val ROUTE_READ = "read/{id}"
+private const val ROUTE_READ = "read/{comicId}/{chapterId}"
 private const val ROUTE_AUTH = "auth"
 private const val ROUTE_FAVORITES = "favorites"
 private const val ROUTE_HISTORY = "history"
@@ -219,7 +219,8 @@ fun JmNavHost(
                     comicId = id,
                     onBack = { nav.popBackStack() },
                     onOpenComic = { next -> nav.navigate("detail/$next") },
-                    onReadChapter = { chapterId -> nav.navigate("read/$chapterId") },
+                    // 阅读页需要作品 id：它要拿系列目录来做上一话/下一话切换
+                    onReadChapter = { chapterId -> nav.navigate("read/$id/$chapterId") },
                     onOpenTag = { tag -> nav.navigate(searchFor(tag)) },
                     onNeedLogin = { nav.navigate(ROUTE_AUTH) },
                 )
@@ -227,10 +228,16 @@ fun JmNavHost(
 
             composable(
                 route = ROUTE_READ,
-                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+                arguments = listOf(
+                    navArgument("comicId") { type = NavType.StringType },
+                    navArgument("chapterId") { type = NavType.StringType },
+                ),
             ) { backStack ->
-                val id = backStack.arguments?.getString("id").orEmpty()
-                ReaderScreen(chapterId = id, onBack = { nav.popBackStack() })
+                ReaderScreen(
+                    comicId = backStack.arguments?.getString("comicId").orEmpty(),
+                    chapterId = backStack.arguments?.getString("chapterId").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                )
             }
         }
     }

@@ -8,6 +8,7 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.auth.AuthStore
+import com.jmcomic_next.lyqs.data.prefs.ReadProgressStore
 
 /**
  * 应用级依赖容器。
@@ -23,6 +24,9 @@ class JmApp : Application(), SingletonImageLoader.Factory {
 
     /** 账号会话：JWT 与会员信息，经 Keystore 加密落盘。 */
     val authStore: AuthStore by lazy { AuthStore(this) }
+
+    /** 阅读进度（作品 → 上次读到哪一话）。服务端历史只有作品粒度，这一层必须在本地。 */
+    val readProgress: ReadProgressStore by lazy { ReadProgressStore(this) }
 
     /** 全局唯一的仓储实例：持有接口主机、请求 Token、图床主机与账号会话。 */
     val repository: JmRepository by lazy { JmRepository.create(authStore = authStore) }

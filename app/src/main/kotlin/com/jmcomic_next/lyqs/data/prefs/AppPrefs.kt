@@ -2,6 +2,9 @@ package com.jmcomic_next.lyqs.data.prefs
 
 import android.content.Context
 import androidx.core.content.edit
+import com.jmcomic_next.lyqs.data.remote.JmJson
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 
 /** 主题模式。默认跟随系统 —— 与博客首次访问的行为一致。 */
 enum class ThemeMode { System, Light, Dark }
@@ -42,6 +45,37 @@ class AppPrefs(context: Context) {
         get() = sp.getBoolean(KEY_DYNAMIC, false)
         set(value) = sp.edit { putBoolean(KEY_DYNAMIC, value) }
 
+    /**
+     * 搜索历史，最近的在前。
+     *
+     * 官方同样把搜索历史放本地（localStorage 的 `search` 键）。这里限制 20 条：
+     * 历史是为了快速重搜近期的词，无限增长只会让列表变成需要滚动才能用的负担。
+     */
+    var searchHistory: List<String>
+        get() = runCatching {
+            JmJson.decodeFromString(
+                historySerializer,
+                sp.getString(KEY_SEARCH_HISTORY, null) ?: "[]",
+            )
+        }.getOrDefault(emptyList())
+        set(value) = sp.edit {
+            putString(
+                KEY_SEARCH_HISTORY,
+                JmJson.encodeToString(historySerializer, value.take(SEARCH_HISTORY_LIMIT)),
+            )
+        }
+
+    /** 记一条搜索词：已存在则提到最前，避免重复项把列表挤满。 */
+    fun addSearchHistory(query: String) {
+        val q = query.trim()
+        if (q.isEmpty()) return
+        searchHistory = listOf(q) + searchHistory.filterNot { it.equals(q, ignoreCase = true) }
+    }
+
+    fun clearSearchHistory() {
+        searchHistory = emptyList()
+    }
+
     /** 阅读器浏览形态，默认纵向连续滚动。 */
     var readerMode: ReaderMode
         get() = runCatching { ReaderMode.valueOf(sp.getString(KEY_READER_MODE, null) ?: "") }
@@ -49,8 +83,12 @@ class AppPrefs(context: Context) {
         set(value) = sp.edit { putString(KEY_READER_MODE, value.name) }
 
     private companion object {
+        val historySerializer = ListSerializer(String.serializer())
+
         const val KEY_THEME = "theme_mode"
         const val KEY_DYNAMIC = "dynamic_color"
         const val KEY_READER_MODE = "reader_mode"
+        const val KEY_SEARCH_HISTORY = "search_history"
+        const val SEARCH_HISTORY_LIMIT = 20
     }
 }

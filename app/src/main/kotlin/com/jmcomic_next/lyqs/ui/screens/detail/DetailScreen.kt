@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -46,6 +48,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import coil3.compose.AsyncImage
 import com.jmcomic_next.lyqs.data.JmRepository
+import com.jmcomic_next.lyqs.data.prefs.ReadProgressStore
 import com.jmcomic_next.lyqs.data.remote.dto.AlbumDetail
 import com.jmcomic_next.lyqs.data.remote.dto.FavoriteFolder
 import com.jmcomic_next.lyqs.data.remote.dto.SeriesItem
@@ -81,10 +84,13 @@ data class DetailUiState(
      */
     val folderPickerVisible: Boolean = false,
     val folders: List<FavoriteFolder> = emptyList(),
+    /** 上次读到的那一话（本地记录）。为空表示没读过或读的就是第一话。 */
+    val lastChapterId: String? = null,
 )
 
 class DetailViewModel(
     private val repo: JmRepository,
+    private val readProgress: ReadProgressStore,
     private val comicId: String,
 ) : ViewModel() {
 
@@ -102,10 +108,19 @@ class DetailViewModel(
                 repo.bootstrap()
                 repo.album(comicId)
             }
+            val detail = result.getOrNull()
+            // 只在记录的那一话确实还在目录里时才提供「继续阅读」——
+            // 目录可能因作品改版而变化，指向一个不存在的章节会直接报错
+            val last = readProgress.lastChapterId(comicId)
+                ?.takeIf { id -> detail?.series?.any { it.id == id } == true }
+                // 读到第一话时没有「继续」的意义，与从头开始没区别
+                ?.takeIf { it != detail?.series?.firstOrNull()?.id }
+
             _state.update {
                 it.copy(
                     loading = false,
-                    detail = result.getOrNull(),
+                    detail = detail,
+                    lastChapterId = last,
                     error = result.exceptionOrNull()?.message,
                 )
             }
@@ -190,9 +205,11 @@ fun DetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalRepository.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val readProgress = remember(context) { ReadProgressStore(context) }
     val vm: DetailViewModel = viewModel(
         key = "detail-$comicId",
-        factory = viewModelFactory { initializer { DetailViewModel(repo, comicId) } },
+        factory = viewModelFactory { initializer { DetailViewModel(repo, readProgress, comicId) } },
     )
     val state by vm.state.collectAsStateWithLifecycle()
     val c = JmTheme.colors
@@ -261,6 +278,7 @@ fun DetailScreen(
             state.detail != null -> DetailContent(
                 detail = state.detail!!,
                 repo = repo,
+                lastChapterId = state.lastChapterId,
                 onOpenComic = onOpenComic,
                 onReadChapter = onReadChapter,
                 onOpenTag = onOpenTag,
@@ -284,6 +302,7 @@ fun DetailScreen(
 private fun DetailContent(
     detail: AlbumDetail,
     repo: JmRepository,
+    lastChapterId: String?,
     onOpenComic: (String) -> Unit,
     onReadChapter: (String) -> Unit,
     onOpenTag: (String) -> Unit,
@@ -388,6 +407,37 @@ private fun DetailContent(
                         color = c.textSecondary,
                         modifier = Modifier.padding(Spacing.lg),
                     )
+                }
+            }
+        }
+
+        // 继续阅读：放在目录之前，因为它是「回到我上次的位置」这一最常用动作的入口
+        lastChapterId?.let { chapterId ->
+            val index = detail.series.indexOfFirst { it.id == chapterId } + 1
+            item(key = "continue") {
+                GlassSurface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
+                    level = GlassLevel.Raised,
+                    tinted = true,
+                    onClick = { onReadChapter(chapterId) },
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            tint = c.accent,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Text(
+                            text = "继续阅读 · 第 $index 话",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = c.text,
+                            modifier = Modifier.padding(start = Spacing.sm),
+                        )
+                    }
                 }
             }
         }

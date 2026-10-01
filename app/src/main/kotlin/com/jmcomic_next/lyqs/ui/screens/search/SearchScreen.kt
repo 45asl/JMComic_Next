@@ -3,11 +3,16 @@ package com.jmcomic_next.lyqs.ui.screens.search
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -22,6 +27,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -41,6 +49,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jmcomic_next.lyqs.data.JmRepository
+import com.jmcomic_next.lyqs.data.prefs.AppPrefs
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
 import com.jmcomic_next.lyqs.ui.LocalRepository
 import com.jmcomic_next.lyqs.ui.components.ComicRow
@@ -49,6 +58,7 @@ import com.jmcomic_next.lyqs.ui.components.GlassTopBar
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.components.MessageState
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
+import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.ui.theme.Spacing
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -66,12 +76,39 @@ data class SearchUiState(
     val searched: Boolean = false,
     /** 非空表示命中「按编号精确检索」，界面应直接打开该作品。 */
     val redirectAid: String? = null,
+    /** 热门标签，未输入关键词时作为检索起点。 */
+    val hotTags: List<String> = emptyList(),
+    /** 本地搜索历史，最近的在前。 */
+    val history: List<String> = emptyList(),
 )
 
-class SearchViewModel(private val repo: JmRepository) : ViewModel() {
+class SearchViewModel(
+    private val repo: JmRepository,
+    private val prefs: AppPrefs,
+) : ViewModel() {
 
-    private val _state = MutableStateFlow(SearchUiState())
+    private val _state = MutableStateFlow(SearchUiState(history = prefs.searchHistory))
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
+
+    init {
+        loadHotTags()
+    }
+
+    /** 热门标签失败不影响搜索本身，因此只静默留空。 */
+    private fun loadHotTags() {
+        viewModelScope.launch {
+            val tags = runCatching {
+                repo.bootstrap()
+                repo.hotTags()
+            }.getOrDefault(emptyList())
+            _state.update { it.copy(hotTags = tags) }
+        }
+    }
+
+    fun clearHistory() {
+        prefs.clearSearchHistory()
+        _state.update { it.copy(history = emptyList()) }
+    }
 
     fun onQueryChange(q: String) = _state.update { it.copy(query = q) }
 
@@ -90,7 +127,11 @@ class SearchViewModel(private val repo: JmRepository) : ViewModel() {
         if (q.isEmpty() || s.loading) return
         val f = s.filters
 
-        _state.update { it.copy(loading = true, error = null) }
+        // 记历史放在发起请求之前：用户按下搜索就代表这次检索意图成立，
+        // 哪怕请求失败，这个词也仍然是他想搜的
+        prefs.addSearchHistory(q)
+        _state.update { it.copy(loading = true, error = null, history = prefs.searchHistory) }
+
         viewModelScope.launch {
             val result = runCatching {
                 repo.bootstrap()
@@ -134,8 +175,10 @@ fun SearchScreen(
     initialQuery: String = "",
 ) {
     val repo = LocalRepository.current
+    val context = LocalContext.current
+    val prefs = remember(context) { AppPrefs(context) }
     val vm: SearchViewModel = viewModel(
-        factory = viewModelFactory { initializer { SearchViewModel(repo) } },
+        factory = viewModelFactory { initializer { SearchViewModel(repo, prefs) } },
     )
     val state by vm.state.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf(initialQuery) }
@@ -229,10 +272,15 @@ fun SearchScreen(
             state.error != null && state.results.isEmpty() ->
                 ErrorBox(message = state.error.orEmpty(), onRetry = { vm.search() })
 
-            !state.searched -> MessageState(
-                title = "搜点什么",
-                description = "支持按作品名、作者、标签检索",
-                icon = Icons.Filled.Search,
+            !state.searched -> SuggestionPanel(
+                history = state.history,
+                hotTags = state.hotTags,
+                onPick = { word ->
+                    input = word
+                    vm.onQueryChange(word)
+                    vm.search()
+                },
+                onClearHistory = { vm.clearHistory() },
             )
 
             state.results.isEmpty() -> MessageState(
@@ -259,6 +307,92 @@ fun SearchScreen(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 未搜索时的建议面板：最近搜过的词 + 热门标签。
+ *
+ * 两者都是「点一下就能开始检索」的入口，因此视觉上同构（同一套 chip），
+ * 只在标题上区分。热门的顺序由服务端给，不再自行排序。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SuggestionPanel(
+    history: List<String>,
+    hotTags: List<String>,
+    onPick: (String) -> Unit,
+    onClearHistory: () -> Unit,
+) {
+    val c = JmTheme.colors
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+    ) {
+        if (history.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "最近搜索",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = c.text,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onClearHistory) {
+                        Text("清空", color = c.textSecondary)
+                    }
+                }
+                WordChips(history, onPick)
+            }
+        }
+
+        if (hotTags.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Text(
+                    text = "热门标签",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = c.text,
+                )
+                WordChips(hotTags, onPick)
+            }
+        }
+
+        if (history.isEmpty() && hotTags.isEmpty()) {
+            MessageState(
+                title = "搜点什么",
+                description = "支持按作品名、作者、标签检索",
+                icon = Icons.Filled.Search,
+            )
+        }
+    }
+}
+
+/** 一组可点的检索词。用 FlowRow 自然换行：词长差异大，固定列会浪费或截断。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WordChips(words: List<String>, onPick: (String) -> Unit) {
+    val c = JmTheme.colors
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        words.forEach { word ->
+            Surface(
+                shape = RoundedCornerShape(Radius.xs),
+                color = c.accentSoft,
+                onClick = { onPick(word) },
+            ) {
+                Text(
+                    text = word,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.accent,
+                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+                )
             }
         }
     }

@@ -25,6 +25,8 @@ object Radius {
     val lg: Dp = 18.dp
     /** --r-xl */
     val xl: Dp = 24.dp
+    /** --r-pill，胶囊形。用于页码这类短小的浮动标签。 */
+    val pill: Dp = 999.dp
 }
 
 object Spacing {
