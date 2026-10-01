@@ -71,8 +71,14 @@ object JmPaths {
     /** 点赞（API_LIKE_DATA）：POST `{id, like_type?}`。 */
     const val LIKE = "like"
 
-    /** 观看历史（API_HISTORY_LIST）：GET `{page}` 取列表，POST `{id}` 记录一次观看。 */
+    /** 观看历史（API_HISTORY_LIST）：GET `{page}` 取列表，POST `{id}` **删除**一条历史。 */
     const val WATCH_LIST = "watch_list"
+
+    /**
+     * 评论 / 论坛（API_FORUM_LIST）：GET。
+     * 详情页的评论用 `{mode: "all", page, aid}`，响应 `data` 为 `{total, list}`。
+     */
+    const val FORUM = "forum"
 
     /**
      * 封面图路径模板。

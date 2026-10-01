@@ -36,6 +36,7 @@ import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.screens.auth.AuthScreen
 import com.jmcomic_next.lyqs.ui.screens.category.CategoryScreen
+import com.jmcomic_next.lyqs.ui.screens.comments.CommentsScreen
 import com.jmcomic_next.lyqs.ui.screens.favorites.AccountListKind
 import com.jmcomic_next.lyqs.ui.screens.favorites.AccountListScreen
 import com.jmcomic_next.lyqs.ui.screens.detail.DetailScreen
@@ -70,6 +71,7 @@ private const val ROUTE_READ = "read/{comicId}/{chapterId}"
 private const val ROUTE_AUTH = "auth"
 private const val ROUTE_FAVORITES = "favorites"
 private const val ROUTE_HISTORY = "history"
+private const val ROUTE_COMMENTS = "comments/{aid}"
 
 /** 按标签打开搜索页。分类页与详情页的标签都走这里。 */
 private fun searchFor(tag: String): String = "search?$ARG_QUERY=${Uri.encode(tag)}"
@@ -206,6 +208,16 @@ fun JmNavHost(
                 )
             }
 
+            composable(
+                route = ROUTE_COMMENTS,
+                arguments = listOf(navArgument("aid") { type = NavType.StringType }),
+            ) { backStack ->
+                CommentsScreen(
+                    comicId = backStack.arguments?.getString("aid").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                )
+            }
+
             composable(ROUTE_HISTORY) {
                 AccountListScreen(
                     kind = AccountListKind.History,
@@ -228,6 +240,7 @@ fun JmNavHost(
                     onReadChapter = { chapterId -> nav.navigate("read/$id/$chapterId") },
                     onOpenTag = { tag -> nav.navigate(searchFor(tag)) },
                     onNeedLogin = { nav.navigate(ROUTE_AUTH) },
+                    onOpenComments = { nav.navigate("comments/$id") },
                 )
             }
 

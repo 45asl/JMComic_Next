@@ -272,3 +272,58 @@ data class PagedList(
 ) {
     val hasTotal: Boolean get() = total > 0
 }
+
+/**
+ * 评论作者的经验信息。只用到等级 —— 官方在昵称旁展示一个等级徽章。
+ */
+@Serializable
+data class ExpInfo(
+    @Serializable(with = FlexInt::class) val level: Int = 0,
+)
+
+/**
+ * 一条评论（`forum` 接口）。
+ *
+ * 字段名是**大写短名**（`CID`/`UID`/`AID`/`NID`），而正文与作者信息是小写 ——
+ * 依据 `ForumList.tsx` 的实际访问点：`d.CID`、`d.UID`、`item.content`、
+ * `d.nickname`、`d.photo`、`d.expinfo.level`。
+ * 写错大小写不会报错，只会静默取到空值，因此这里逐字段对照过。
+ */
+@Serializable
+data class CommentItem(
+    @SerialName("CID")
+    @Serializable(with = FlexString::class) val commentId: String = "",
+    @SerialName("UID")
+    @Serializable(with = FlexStringOrNull::class) val uid: String? = null,
+    @SerialName("AID")
+    @Serializable(with = FlexStringOrNull::class) val aid: String? = null,
+    @SerialName("BID")
+    @Serializable(with = FlexStringOrNull::class) val bid: String? = null,
+    @SerialName("NID")
+    @Serializable(with = FlexStringOrNull::class) val nid: String? = null,
+    /** 正文。 */
+    val content: String? = null,
+    /** 发表时间。服务端以字符串下发。 */
+    @Serializable(with = FlexStringOrNull::class) val addtime: String? = null,
+    /** 作者昵称。 */
+    val nickname: String? = null,
+    /** 作者头像文件名，需拼图床主机（`media/users/<photo>`）。 */
+    val photo: String? = null,
+    val expinfo: ExpInfo? = null,
+    /** 主题标题，评论列表里通常为空。 */
+    val name: String? = null,
+    /** 楼中楼回复。只展示数量，不展开（官方也只在详情里展开一层）。 */
+    @SerialName("replys") val replies: List<CommentItem> = emptyList(),
+) {
+    /** 展示用作者名，缺失时回退为匿名。 */
+    val authorName: String get() = nickname?.takeIf { it.isNotBlank() } ?: "匿名"
+}
+
+/** 评论列表响应（`forum` 接口的 `data`）。 */
+@Serializable
+data class ForumPayload(
+    val list: List<CommentItem> = emptyList(),
+    @Serializable(with = FlexStringOrNull::class) val total: String? = null,
+) {
+    val totalCount: Int get() = total?.toIntOrNull() ?: list.size
+}

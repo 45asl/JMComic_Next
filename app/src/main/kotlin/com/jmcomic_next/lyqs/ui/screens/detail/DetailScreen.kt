@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.PlayArrow
@@ -90,11 +91,38 @@ data class DetailUiState(
      */
     val folderPickerVisible: Boolean = false,
     val folders: List<FavoriteFolder> = emptyList(),
-    /** 上次读到的那一话（本地记录）。为空表示没读过或读的就是第一话。 */
-    val lastChapterId: String? = null,
+    /** 阅读入口。为空只表示详情还没加载出来。 */
+    val readEntry: ReadEntry? = null,
     /** 点赞动作的结果提示。 */
     val likeNotice: String? = null,
 )
+
+/**
+ * 详情页的阅读入口。
+ *
+ * 三种作品形态都要能读，这是关键：
+ *  - 多章节：有本地进度就续读，否则从第一话开始
+ *  - 单章节：`series` 只有一项，等价于「从头开始」
+ *  - **无章节**：`series` 是空数组，此时**用作品 id 本身调 `comic_read`**
+ *    （实测：`comic_read?id=<作品id>` 正常返回图片列表）
+ *
+ * 之前只从 `series` 里找章节、且要求本地有进度才显示按钮，
+ * 结果无章节的作品**没有任何入口能开始阅读**。
+ */
+data class ReadEntry(
+    val chapterId: String,
+    /** true 表示续读（本地有进度），false 表示从头开始。 */
+    val isResume: Boolean,
+    /** 在目录中的序号；0 表示该作品没有目录。 */
+    val index: Int,
+) {
+    val label: String
+        get() = when {
+            isResume && index > 0 -> "继续阅读 · 第 $index 话"
+            index > 0 -> "开始阅读 · 第 $index 话"
+            else -> "开始阅读"
+        }
+}
 
 class DetailViewModel(
     private val repo: JmRepository,
@@ -133,18 +161,30 @@ class DetailViewModel(
                 repo.album(comicId)
             }
             val detail = result.getOrNull()
-            // 只在记录的那一话确实还在目录里时才提供「继续阅读」——
-            // 目录可能因作品改版而变化，指向一个不存在的章节会直接报错
-            val last = readProgress.lastChapterId(comicId)
-                ?.takeIf { id -> detail?.series?.any { it.id == id } == true }
-                // 读到第一话时没有「继续」的意义，与从头开始没区别
-                ?.takeIf { it != detail?.series?.firstOrNull()?.id }
+            val series = detail?.series.orEmpty()
+
+            // 仅当记录的那一话仍存在于目录里才算「续读」：目录会随作品改版变化，
+            // 指向一个不存在的章节会让用户点一下就报错
+            val saved = readProgress.lastChapterId(comicId)
+                ?.takeIf { id -> series.any { it.id == id } }
+
+            val entry = when {
+                detail == null -> null
+                // 读到第一话时不叫「继续」，与从头开始没有区别
+                saved != null && saved != series.firstOrNull()?.id ->
+                    ReadEntry(saved, isResume = true, index = series.indexOfFirst { it.id == saved } + 1)
+                series.isNotEmpty() ->
+                    ReadEntry(series.first().id, isResume = false, index = 1)
+                else ->
+                    // 无章节作品：作品 id 自身就是可读单元
+                    ReadEntry(comicId, isResume = false, index = 0)
+            }
 
             _state.update {
                 it.copy(
                     loading = false,
                     detail = detail,
-                    lastChapterId = last,
+                    readEntry = entry,
                     error = result.exceptionOrNull()?.message,
                 )
             }
@@ -264,6 +304,7 @@ fun DetailScreen(
     onReadChapter: (String) -> Unit,
     onOpenTag: (String) -> Unit,
     onNeedLogin: () -> Unit,
+    onOpenComments: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalRepository.current
@@ -349,11 +390,12 @@ fun DetailScreen(
             state.detail != null -> DetailContent(
                 detail = state.detail!!,
                 repo = repo,
-                lastChapterId = state.lastChapterId,
+                readEntry = state.readEntry,
                 onLike = { vm.like(onNeedLogin) },
                 onOpenComic = onOpenComic,
                 onReadChapter = onReadChapter,
                 onOpenTag = onOpenTag,
+                onOpenComments = onOpenComments,
             )
         }
     }
@@ -374,11 +416,12 @@ fun DetailScreen(
 private fun DetailContent(
     detail: AlbumDetail,
     repo: JmRepository,
-    lastChapterId: String?,
+    readEntry: ReadEntry?,
     onOpenComic: (String) -> Unit,
     onReadChapter: (String) -> Unit,
     onOpenTag: (String) -> Unit,
     onLike: () -> Unit,
+    onOpenComments: () -> Unit,
 ) {
     val c = JmTheme.colors
     // 默认停在第一章所在的那一页目录
@@ -540,15 +583,54 @@ private fun DetailContent(
             }
         }
 
-        // 继续阅读：放在目录之前，因为它是「回到我上次的位置」这一最常用动作的入口
-        lastChapterId?.let { chapterId ->
-            val index = detail.series.indexOfFirst { it.id == chapterId } + 1
-            item(key = "continue") {
+        // 评论入口。做成入口而不是内嵌列表：评论是无限分页的，
+        // 内嵌会把章节目录推到很远，而两者都是用户会主动去找的内容，不该互相挡路
+        item(key = "comments") {
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
+                level = GlassLevel.Card,
+                onClick = onOpenComments,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ChatBubbleOutline,
+                        contentDescription = null,
+                        tint = c.accent,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        text = "评论",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = c.text,
+                        modifier = Modifier.weight(1f).padding(start = Spacing.sm),
+                    )
+                    Text(
+                        text = if (detail.commentTotal > 0) "${detail.commentTotal} 条" else "暂无",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.textTertiary,
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.ChevronRight,
+                        contentDescription = null,
+                        tint = c.textTertiary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+
+        // 阅读入口：**任何作品形态都必须有**。放在最前，它是本页最主要的动作。
+        // 无章节的作品（series 为空）同样有入口，走作品 id 自身。
+        readEntry?.let { entry ->
+            item(key = "read-entry") {
                 GlassSurface(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
                     level = GlassLevel.Raised,
                     tinted = true,
-                    onClick = { onReadChapter(chapterId) },
+                    onClick = { onReadChapter(entry.chapterId) },
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
@@ -558,10 +640,10 @@ private fun DetailContent(
                             imageVector = Icons.Filled.PlayArrow,
                             contentDescription = null,
                             tint = c.accent,
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier.size(24.dp),
                         )
                         Text(
-                            text = "继续阅读 · 第 $index 话",
+                            text = entry.label,
                             style = MaterialTheme.typography.titleMedium,
                             color = c.text,
                             modifier = Modifier.padding(start = Spacing.sm),
@@ -571,8 +653,8 @@ private fun DetailContent(
             }
         }
 
-        // 章节目录
-        if (detail.series.isNotEmpty()) {
+        // 章节目录：只有一项时列表没有意义（上面已有「开始阅读」），故不展示
+        if (detail.series.size > 1) {
             item(key = "chapters-head") {
                 Text(
                     text = "章节目录（${detail.series.size}）",

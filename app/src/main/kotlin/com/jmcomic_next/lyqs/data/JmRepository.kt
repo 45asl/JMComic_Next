@@ -12,6 +12,7 @@ import com.jmcomic_next.lyqs.data.auth.AuthStore
 import com.jmcomic_next.lyqs.data.remote.dto.ActionResult
 import com.jmcomic_next.lyqs.data.remote.dto.AlbumDetail
 import com.jmcomic_next.lyqs.data.remote.dto.FavoriteListPayload
+import com.jmcomic_next.lyqs.data.remote.dto.ForumPayload
 import com.jmcomic_next.lyqs.data.remote.dto.HistoryPayload
 import com.jmcomic_next.lyqs.data.remote.dto.MemberInfo
 import com.jmcomic_next.lyqs.data.remote.dto.CategoriesPayload
@@ -358,6 +359,26 @@ class JmRepository(
         mapOf("id" to comicId),
     )
 
+    /**
+     * 某作品的评论。
+     *
+     * @param mode 官方 `ForumTabItems` 里的取值（`all` 全部 / `manhua` 漫画评论 / `chat` 聊天室），
+     *   详情页固定用 `all`（`Comment.tsx` 的 `loadList` 默认值）。
+     */
+    suspend fun comments(
+        aid: String,
+        page: Int = 1,
+        mode: String = "all",
+    ): ForumPayload = remote.get(
+        JmPaths.FORUM,
+        ForumPayload.serializer(),
+        mapOf(
+            "mode" to mode,
+            "page" to page.toString(),
+            "aid" to aid,
+        ),
+    )
+
     /** 分类树与标签组。 */
     suspend fun categories(): CategoriesPayload = remote.get(
         JmPaths.CATEGORIES,
@@ -439,6 +460,11 @@ class JmRepository(
         val base = session.imageUrl(path)
         return if (updateAt.isNullOrBlank()) base else "$base?v=$updateAt"
     }
+
+    /** 用户头像地址。`photo` 是文件名，需按 `media/users/<photo>` 拼图床主机。 */
+    fun avatarUrl(photo: String?): String? = photo
+        ?.takeIf { it.isNotBlank() }
+        ?.let { session.imageUrl(JmPaths.AVATAR_TEMPLATE.format(it)) }
 
     /**
      * 判断某张图片是否需要做切片还原。
