@@ -39,6 +39,41 @@ object JmPaths {
     /** 应用配置（API_APP_SETTING），参数 `app_img_shunt`、`lang`、`t`。 */
     const val SETTING = "setting"
 
+    // ---- 账号（API_MEMBER_*）----
+
+    /** 登录：POST `{username, password}`，响应 `data.jwttoken` + 会员信息。 */
+    const val LOGIN = "login"
+
+    /** 注册：POST `{username, password, password_confirm, email, gender}`。 */
+    const val REGISTER = "register"
+
+    /** 忘记密码：POST `{email}`。 */
+    const val FORGOT = "forgot"
+
+    /** 登出：POST 无参。 */
+    const val LOGOUT = "logout"
+
+    // ---- 收藏与历史 ----
+
+    /**
+     * 收藏（API_FAVORITE_LIST）。
+     * GET 取列表（`page` / `folder_id` / `o`）；**POST 是切换**（`aid`），
+     * 增还是删由响应里的 `type` 告知。
+     */
+    const val FAVORITE = "favorite"
+
+    /**
+     * 收藏夹编辑（API_FAVORITE_FOLDER）：POST `{type, folder_id, folder_name, aid}`。
+     * `type` 取值：`add` 新建 / `edit` 改名 / `move` 归类 / `del` 删除。
+     */
+    const val FAVORITE_FOLDER = "favorite_folder"
+
+    /** 点赞（API_LIKE_DATA）：POST `{id, like_type?}`。 */
+    const val LIKE = "like"
+
+    /** 观看历史（API_HISTORY_LIST）：GET `{page}` 取列表，POST `{id}` 记录一次观看。 */
+    const val WATCH_LIST = "watch_list"
+
     /**
      * 封面图路径模板。
      *

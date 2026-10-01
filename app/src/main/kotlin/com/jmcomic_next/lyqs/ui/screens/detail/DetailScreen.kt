@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Icon
@@ -25,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -66,6 +69,9 @@ data class DetailUiState(
     val loading: Boolean = true,
     val error: String? = null,
     val detail: AlbumDetail? = null,
+    val togglingFavorite: Boolean = false,
+    /** 收藏操作的结果提示，展示一次后由界面清除。 */
+    val favoriteNotice: String? = null,
 )
 
 class DetailViewModel(
@@ -96,6 +102,43 @@ class DetailViewModel(
             }
         }
     }
+
+    fun consumeFavoriteNotice() = _state.update { it.copy(favoriteNotice = null) }
+
+    /**
+     * 切换收藏。
+     *
+     * 未登录时不发请求，直接把用户引到登录页 —— 服务端必然拒绝，
+     * 让用户看着按钮转一圈再报错是更差的体验。
+     *
+     * 收藏结果以服务端返回的 `type` 为准（`remove` 即已取消，`add`/`move`/`edit` 即已收藏），
+     * 而不是本地取反：这样即使本地状态早已过时（例如在别处操作过），界面也会被纠正回真实状态。
+     */
+    fun toggleFavorite(onNeedLogin: () -> Unit) {
+        if (_state.value.togglingFavorite) return
+        if (!repo.auth.isLoggedIn) {
+            onNeedLogin()
+            return
+        }
+        _state.update { it.copy(togglingFavorite = true) }
+        viewModelScope.launch {
+            val result = runCatching { repo.toggleFavorite(comicId) }
+            _state.update { prev ->
+                val action = result.getOrNull()
+                val nowFavorite = when (action?.type) {
+                    "remove" -> false
+                    "add", "move", "edit" -> true
+                    else -> prev.detail?.isFavorite ?: false
+                }
+                prev.copy(
+                    togglingFavorite = false,
+                    detail = prev.detail?.copy(isFavorite = nowFavorite),
+                    favoriteNotice = action?.msg
+                        ?: result.exceptionOrNull()?.message,
+                )
+            }
+        }
+    }
 }
 
 /**
@@ -111,6 +154,7 @@ fun DetailScreen(
     onOpenComic: (String) -> Unit,
     onReadChapter: (String) -> Unit,
     onOpenTag: (String) -> Unit,
+    onNeedLogin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalRepository.current
@@ -120,6 +164,14 @@ fun DetailScreen(
     )
     val state by vm.state.collectAsStateWithLifecycle()
     val c = JmTheme.colors
+
+    // 收藏结果的提示展示一次即可，避免切走再回来还挂着
+    LaunchedEffect(state.favoriteNotice) {
+        if (state.favoriteNotice != null) {
+            kotlinx.coroutines.delay(2500)
+            vm.consumeFavoriteNotice()
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         GlassTopBar(
@@ -133,7 +185,41 @@ fun DetailScreen(
                     )
                 }
             },
+            actions = {
+                state.detail?.let { detail ->
+                    IconButton(
+                        onClick = { vm.toggleFavorite(onNeedLogin) },
+                        enabled = !state.togglingFavorite,
+                    ) {
+                        Icon(
+                            imageVector = if (detail.isFavorite) {
+                                Icons.Filled.Bookmark
+                            } else {
+                                Icons.Filled.BookmarkBorder
+                            },
+                            contentDescription = if (detail.isFavorite) "取消收藏" else "收藏",
+                            tint = if (detail.isFavorite) c.accent else c.textSecondary,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+            },
         )
+
+        state.favoriteNotice?.let { notice ->
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                level = GlassLevel.Card,
+                shape = RoundedCornerShape(0.dp),
+            ) {
+                Text(
+                    text = notice,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.text,
+                    modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                )
+            }
+        }
 
         when {
             state.loading -> LoadingBox()

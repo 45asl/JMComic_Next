@@ -7,6 +7,7 @@ import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import com.jmcomic_next.lyqs.data.JmRepository
+import com.jmcomic_next.lyqs.data.auth.AuthStore
 
 /**
  * 应用级依赖容器。
@@ -20,8 +21,11 @@ import com.jmcomic_next.lyqs.data.JmRepository
  */
 class JmApp : Application(), SingletonImageLoader.Factory {
 
-    /** 全局唯一的仓储实例：内部持有会话（API 主机、Token、图床主机）。 */
-    val repository: JmRepository by lazy { JmRepository.create() }
+    /** 账号会话：JWT 与会员信息，经 Keystore 加密落盘。 */
+    val authStore: AuthStore by lazy { AuthStore(this) }
+
+    /** 全局唯一的仓储实例：持有接口主机、请求 Token、图床主机与账号会话。 */
+    val repository: JmRepository by lazy { JmRepository.create(authStore = authStore) }
 
     override fun onCreate() {
         super.onCreate()

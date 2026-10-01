@@ -8,7 +8,12 @@ import com.jmcomic_next.lyqs.data.remote.JmJson
 import com.jmcomic_next.lyqs.data.remote.JmPaths
 import com.jmcomic_next.lyqs.data.remote.JmRemote
 import com.jmcomic_next.lyqs.data.remote.JmSession
+import com.jmcomic_next.lyqs.data.auth.AuthStore
+import com.jmcomic_next.lyqs.data.remote.dto.ActionResult
 import com.jmcomic_next.lyqs.data.remote.dto.AlbumDetail
+import com.jmcomic_next.lyqs.data.remote.dto.FavoriteListPayload
+import com.jmcomic_next.lyqs.data.remote.dto.HistoryPayload
+import com.jmcomic_next.lyqs.data.remote.dto.MemberInfo
 import com.jmcomic_next.lyqs.data.remote.dto.CategoriesPayload
 import com.jmcomic_next.lyqs.data.remote.dto.CategoryFilterPayload
 import com.jmcomic_next.lyqs.data.remote.dto.JmSettings
@@ -50,7 +55,13 @@ data class SearchResult(
     val redirectAid: String? = null,
 )
 
-class JmRepository(private val remote: JmRemote) {
+class JmRepository(
+    private val remote: JmRemote,
+    private val authStore: AuthStore,
+) {
+
+    /** 账号会话状态，供界面读取登录态与会员信息。 */
+    val auth: AuthStore get() = authStore
 
     private val session: JmSession get() = remote.session
 
@@ -194,6 +205,159 @@ class JmRepository(private val remote: JmRemote) {
             }
         }
 
+    // ------------------------------------------------------------------
+    // 账号
+    // ------------------------------------------------------------------
+
+    /**
+     * 登录。
+     *
+     * 成功后立刻把凭证写进 [AuthStore] —— 这样后续请求（含界面刷新触发的那些）
+     * 自然就带上 `Authorization`，不需要调用方再做一次「设置 token」的动作。
+     */
+    suspend fun login(username: String, password: String): MemberInfo {
+        val info = remote.post(
+            JmPaths.LOGIN,
+            MemberInfo.serializer(),
+            mapOf("username" to username, "password" to password),
+        )
+        val token = info.jwtToken?.takeIf { it.isNotBlank() }
+            ?: throw JmException("登录成功但服务端未返回凭证", JmException.Kind.Parse)
+        authStore.save(token, info)
+        return info
+    }
+
+    /**
+     * 注册。
+     *
+     * 注册接口**不返回 token**（官方注册完仍需登录），因此这里不写会话，
+     * 只把服务端的结果返回给界面用于提示。
+     */
+    suspend fun register(
+        username: String,
+        password: String,
+        passwordConfirm: String,
+        email: String,
+        gender: String,
+    ): ActionResult = remote.post(
+        JmPaths.REGISTER,
+        ActionResult.serializer(),
+        mapOf(
+            "username" to username,
+            "password" to password,
+            "password_confirm" to passwordConfirm,
+            "email" to email,
+            "gender" to gender,
+        ),
+    )
+
+    /** 忘记密码：按邮箱发送重置邮件。 */
+    suspend fun forgotPassword(email: String): ActionResult = remote.post(
+        JmPaths.FORGOT,
+        ActionResult.serializer(),
+        mapOf("email" to email),
+    )
+
+    /**
+     * 登出。
+     *
+     * 通知服务端撤销凭证是「尽力而为」：即使这次请求失败（断网等），
+     * 本地也必须登出 —— 否则界面显示已登录、实际凭证已被服务端撤销，
+     * 会退化成每个请求都失败的状态。
+     */
+    suspend fun logout() {
+        runCatching { remote.post(JmPaths.LOGOUT, ActionResult.serializer()) }
+        authStore.clear()
+    }
+
+    // ------------------------------------------------------------------
+    // 收藏 / 点赞 / 观看历史（都需要登录）
+    // ------------------------------------------------------------------
+
+    /**
+     * 切换收藏。
+     *
+     * **同一个调用既收藏也取消** —— 服务端按当前状态自行判断，并在响应的 `type` 里
+     * 告知实际动作（`add` / `remove` / `move` / `edit`）。因此客户端不需要先查状态再决定调什么，
+     * 也就不会出现「本地以为已收藏、服务端其实没有」这类不一致。
+     */
+    suspend fun toggleFavorite(aid: String): ActionResult = remote.post(
+        JmPaths.FAVORITE,
+        ActionResult.serializer(),
+        mapOf("aid" to aid),
+    )
+
+    /**
+     * 收藏列表。
+     *
+     * @param folderId 收藏夹 id，留空为「全部」
+     * @param order 排序，官方默认 `mr`
+     */
+    suspend fun favorites(
+        page: Int = 1,
+        folderId: String? = null,
+        order: String = DEFAULT_FAVORITE_ORDER,
+    ): FavoriteListPayload = remote.get(
+        JmPaths.FAVORITE,
+        FavoriteListPayload.serializer(),
+        buildMap {
+            put("page", page.toString())
+            put("o", order)
+            folderId?.takeIf { it.isNotBlank() }?.let { put("folder_id", it) }
+        },
+    )
+
+    /**
+     * 收藏夹编辑。
+     *
+     * @param type `add` 新建 / `edit` 改名 / `move` 归类 / `del` 删除
+     */
+    suspend fun editFavoriteFolder(
+        type: String,
+        folderId: String? = null,
+        folderName: String? = null,
+        aid: String? = null,
+    ): ActionResult = remote.post(
+        JmPaths.FAVORITE_FOLDER,
+        ActionResult.serializer(),
+        buildMap {
+            put("type", type)
+            folderId?.takeIf { it.isNotBlank() }?.let { put("folder_id", it) }
+            folderName?.takeIf { it.isNotBlank() }?.let { put("folder_name", it) }
+            aid?.takeIf { it.isNotBlank() }?.let { put("aid", it) }
+        },
+    )
+
+    /** 观看历史。 */
+    suspend fun history(page: Int = 1): HistoryPayload = remote.get(
+        JmPaths.WATCH_LIST,
+        HistoryPayload.serializer(),
+        mapOf("page" to page.toString()),
+    )
+
+    /**
+     * 删除一条观看历史。
+     *
+     * **这个 POST 不是「记录观看」，而是「删除历史条目」** —— 这一点极易搞反：
+     * 官方代码里唯一的调用点是 `ComicList.tsx` 的 `handleDelWatchComic`，
+     * 对应菜单项 `del_watch_history`。整个项目**没有任何地方用它上报观看**，
+     * 观看记录是**服务端在读取章节时自动写入**的（请求带着已登录凭证）。
+     *
+     * 因此进入阅读页时**不要**调用它 —— 那等于每读一话就删掉一条历史。
+     */
+    suspend fun deleteHistory(comicId: String): ActionResult = remote.post(
+        JmPaths.WATCH_LIST,
+        ActionResult.serializer(),
+        mapOf("id" to comicId),
+    )
+
+    /** 点赞。注意其响应的 `data` 里还有一层 `{code, status, msg}`，与封套的 code 是两个判断。 */
+    suspend fun like(comicId: String): ActionResult = remote.post(
+        JmPaths.LIKE,
+        ActionResult.serializer(),
+        mapOf("id" to comicId),
+    )
+
     /** 分类树与标签组。 */
     suspend fun categories(): CategoriesPayload = remote.get(
         JmPaths.CATEGORIES,
@@ -290,8 +454,13 @@ class JmRepository(private val remote: JmRemote) {
         this?.let { runCatching { it.jsonPrimitive.content.toInt() }.getOrNull() } ?: 0
 
     companion object {
+        /** 收藏列表的默认排序，官方 `defaultEditInitialState` 里是 `mr`。 */
+        const val DEFAULT_FAVORITE_ORDER = "mr"
+
         /** 便捷构造，供 App 级容器使用。 */
-        fun create(session: JmSession = JmSession()): JmRepository =
-            JmRepository(JmRemote(session))
+        fun create(
+            authStore: AuthStore,
+            session: JmSession = JmSession(),
+        ): JmRepository = JmRepository(JmRemote(session, authStore), authStore)
     }
 }

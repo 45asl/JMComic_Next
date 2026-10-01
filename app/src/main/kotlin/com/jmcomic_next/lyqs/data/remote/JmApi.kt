@@ -4,6 +4,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.FieldMap
+import retrofit2.http.FormUrlEncoded
 import retrofit2.http.QueryMap
 import retrofit2.http.Url
 
@@ -39,10 +41,18 @@ interface JmApi {
         @QueryMap(encoded = true) params: Map<String, String> = emptyMap(),
     ): Envelope
 
+    /**
+     * POST 一律走**表单体**（`application/x-www-form-urlencoded`）。
+     *
+     * 官方客户端的 `HttpUtil.fetchPost` 用 `FormData` 提交（`formData.append(...)`），
+     * 参数在请求体里而不是查询串。若按查询串发送，服务端读不到 `$_POST`，
+     * 表现是「接口返回 200 但业务字段全空」这种很难排查的失败。
+     */
+    @FormUrlEncoded
     @POST
     suspend fun post(
         @Url url: String,
-        @QueryMap(encoded = true) params: Map<String, String> = emptyMap(),
+        @FieldMap params: Map<String, String> = emptyMap(),
     ): Envelope
 }
 
@@ -65,6 +75,9 @@ class JmException(
 
         /** 解析 JSON 失败，通常是服务端字段变更 */
         Parse,
+
+        /** 凭证缺失或已失效 */
+        Auth,
 
         Unknown,
     }

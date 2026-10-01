@@ -18,6 +18,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -31,7 +33,10 @@ import androidx.navigation.navArgument
 import com.jmcomic_next.lyqs.data.prefs.ThemeMode
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
+import com.jmcomic_next.lyqs.ui.screens.auth.AuthScreen
 import com.jmcomic_next.lyqs.ui.screens.category.CategoryScreen
+import com.jmcomic_next.lyqs.ui.screens.favorites.AccountListKind
+import com.jmcomic_next.lyqs.ui.screens.favorites.AccountListScreen
 import com.jmcomic_next.lyqs.ui.screens.detail.DetailScreen
 import com.jmcomic_next.lyqs.ui.screens.home.HomeScreen
 import com.jmcomic_next.lyqs.ui.screens.profile.ProfileScreen
@@ -61,6 +66,9 @@ private const val SEARCH_PATTERN = "search?q={q}"
 private const val ARG_QUERY = "q"
 private const val ROUTE_DETAIL = "detail/{id}"
 private const val ROUTE_READ = "read/{id}"
+private const val ROUTE_AUTH = "auth"
+private const val ROUTE_FAVORITES = "favorites"
+private const val ROUTE_HISTORY = "history"
 
 /** 按标签打开搜索页。分类页与详情页的标签都走这里。 */
 private fun searchFor(tag: String): String = "search?$ARG_QUERY=${Uri.encode(tag)}"
@@ -80,6 +88,8 @@ fun JmNavHost(
     isDark: Boolean,
 ) {
     val nav = rememberNavController()
+    val repo = LocalRepository.current
+    val scope = rememberCoroutineScope()
     val entry by nav.currentBackStackEntryAsState()
     val currentRoute = entry?.destination?.route
     val showBottomBar = MainTab.entries.any { it.pattern == currentRoute }
@@ -164,6 +174,39 @@ fun JmNavHost(
                     onThemeModeChange = onThemeModeChange,
                     dynamicColor = dynamicColor,
                     onDynamicColorChange = onDynamicColorChange,
+                    onLogin = { nav.navigate(ROUTE_AUTH) },
+                    onLogout = {
+                        // 登出要走接口，但本地登出不依赖它成功（见 JmRepository.logout）
+                        scope.launch { repo.logout() }
+                    },
+                    onOpenFavorites = { nav.navigate(ROUTE_FAVORITES) },
+                    onOpenHistory = { nav.navigate(ROUTE_HISTORY) },
+                )
+            }
+
+            composable(ROUTE_AUTH) {
+                AuthScreen(
+                    onBack = { nav.popBackStack() },
+                    // 登录成功后退回来源页（详情或我的），由它们自行刷新
+                    onLoggedIn = { nav.popBackStack() },
+                )
+            }
+
+            composable(ROUTE_FAVORITES) {
+                AccountListScreen(
+                    kind = AccountListKind.Favorites,
+                    onBack = { nav.popBackStack() },
+                    onOpenComic = { id -> nav.navigate("detail/$id") },
+                    onLogin = { nav.navigate(ROUTE_AUTH) },
+                )
+            }
+
+            composable(ROUTE_HISTORY) {
+                AccountListScreen(
+                    kind = AccountListKind.History,
+                    onBack = { nav.popBackStack() },
+                    onOpenComic = { id -> nav.navigate("detail/$id") },
+                    onLogin = { nav.navigate(ROUTE_AUTH) },
                 )
             }
 
@@ -178,6 +221,7 @@ fun JmNavHost(
                     onOpenComic = { next -> nav.navigate("detail/$next") },
                     onReadChapter = { chapterId -> nav.navigate("read/$chapterId") },
                     onOpenTag = { tag -> nav.navigate(searchFor(tag)) },
+                    onNeedLogin = { nav.navigate(ROUTE_AUTH) },
                 )
             }
 

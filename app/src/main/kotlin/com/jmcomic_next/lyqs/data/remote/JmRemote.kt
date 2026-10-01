@@ -1,6 +1,7 @@
 package com.jmcomic_next.lyqs.data.remote
 
 import com.jmcomic_next.lyqs.BuildConfig
+import com.jmcomic_next.lyqs.data.auth.AuthStore
 import com.jmcomic_next.lyqs.data.crypto.JmCrypto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -9,6 +10,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.TimeUnit
@@ -21,7 +23,10 @@ import java.util.concurrent.TimeUnit
  * 覆盖「App 长时间挂后台导致时间戳过期」这一种可自愈的失败。
  * 仍失败则抛 [JmException.Kind.Decrypt]，那种情况通常是协议变了，重试没有意义。
  */
-class JmRemote(val session: JmSession) {
+class JmRemote(
+    val session: JmSession,
+    private val authStore: AuthStore,
+) {
 
     private val json = JmJson
 
@@ -30,12 +35,16 @@ class JmRemote(val session: JmSession) {
         .addInterceptor(AdBlockerInterceptor())
         .addInterceptor { chain ->
             // Token 与 Tokenparam 每次请求现取：会话刷新后立刻生效
-            val request = chain.request().newBuilder()
+            val builder = chain.request().newBuilder()
                 .header("Tokenparam", session.tokenParam)
                 .header("Token", session.token)
                 .header("Accept", "application/json, text/plain, */*")
-                .build()
-            chain.proceed(request)
+
+            // 已登录时带 JWT。每次现取，登录/登出后立即生效，无需重建客户端。
+            authStore.token?.takeIf { it.isNotBlank() }?.let {
+                builder.header("Authorization", "Bearer $it")
+            }
+            chain.proceed(builder.build())
         }
         .apply {
             if (BuildConfig.DEBUG) {
@@ -122,9 +131,29 @@ class JmRemote(val session: JmSession) {
             throw JmException("响应解析失败：${t.message}", JmException.Kind.Parse, t)
         }
 
-    private fun Throwable.toJmException(): JmException = when (this) {
-        is JmException -> this
-        else -> JmException(
+    /**
+     * 把底层异常翻译成带用户可读文案的 [JmException]。
+     *
+     * 这里承担一件重要的事：**服务端拒绝凭证时清掉本地会话**。
+     * token 的真实有效期由服务端决定，客户端不该自己猜（官方客户端用本地 1 小时硬过期，
+     * 见 [com.jmcomic_next.lyqs.data.auth.AuthStore] 的说明）。
+     * 一旦收到 401/403，就说明这个 token 已经不可用，继续留着只会让后续每个请求都失败。
+     */
+    private fun Throwable.toJmException(): JmException {
+        if (this is HttpException) {
+            if (code() == 401 || code() == 403) {
+                val wasLoggedIn = authStore.isLoggedIn
+                authStore.clear()
+                return JmException(
+                    if (wasLoggedIn) "登录状态已失效，请重新登录" else "没有访问权限",
+                    JmException.Kind.Auth,
+                    this,
+                )
+            }
+            return JmException("服务端返回 ${code()}", JmException.Kind.Api, this)
+        }
+        if (this is JmException) return this
+        return JmException(
             "网络请求失败：${message ?: this::class.java.simpleName}",
             JmException.Kind.Network,
             this,

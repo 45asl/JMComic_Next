@@ -96,6 +96,8 @@ fun ComicRow(
     coverUrl: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 尾部操作槽，例如历史列表的删除按钮。为空时布局与原来一致。 */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val c = JmTheme.colors
     GlassSurface(
@@ -138,6 +140,7 @@ fun ComicRow(
                 }
                 item.category?.title?.takeIf { it.isNotBlank() }?.let { CategoryChip(it) }
             }
+            trailing?.invoke()
         }
     }
 }
