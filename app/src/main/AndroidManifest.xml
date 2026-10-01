@@ -2,31 +2,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
+        android:name=".JmApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@style/Theme.JMComic_Next"
-        android:name=".MyApplication">
+        android:supportsRtl="true"
+        android:theme="@style/Theme.JMComic_Next">
 
-        <!-- 启动页：补全完整包名，你的SplashActivity在activity子包下！ -->
         <activity
-            android:name=".activity.SplashActivity"
-            android:exported="true">
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- 首页：MainActivity设为exported="true"（安卓12+强制），子Activity补全包名 -->
-        <activity
-            android:name=".MainActivity"
-            android:exported="true" />
-            
-        <activity
-            android:name=".activity.DetailActivity"
-            android:exported="false" />
     </application>
 </manifest>
