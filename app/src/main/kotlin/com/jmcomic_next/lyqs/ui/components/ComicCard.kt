@@ -142,14 +142,19 @@ fun ComicRow(
     }
 }
 
-/** 分类小标签。 */
+/** 分类小标签。[onClick] 非空时可点（详情页的标签用它跳到同标签搜索）。 */
 @Composable
-fun CategoryChip(text: String, modifier: Modifier = Modifier) {
+fun CategoryChip(
+    text: String,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
     val c = JmTheme.colors
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(Radius.xs))
             .background(c.accentSoft)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
     ) {
         Text(

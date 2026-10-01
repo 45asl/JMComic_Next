@@ -144,6 +144,27 @@ class JmRepository(private val remote: JmRemote) {
         return PagedList(payload.content, payload.total?.toIntOrNull() ?: 0)
     }
 
+    /**
+     * 热门标签。
+     *
+     * 用于分类浏览页。之所以用它而不是 `categories` 接口：后者的条目带有
+     * `slug` / `updated_at`，从渲染层看是**登录用户的收藏夹分类**，不适合做公开分类导航；
+     * 而 `hot_tags` 是纯字符串数组，语义与数据形态都明确。
+     */
+    suspend fun hotTags(): List<String> =
+        remote.get(JmPaths.HOT_TAGS, JsonElement.serializer()).let { el ->
+            when (el) {
+                is JsonArray -> el.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf(String::isNotBlank) }
+                is JsonObject -> el["list"]
+                    ?.takeIf { it is JsonArray }
+                    ?.let { list ->
+                        (list as JsonArray).mapNotNull { (it as? JsonPrimitive)?.content }
+                    }
+                    .orEmpty()
+                else -> emptyList()
+            }
+        }
+
     /** 漫画详情。 */
     suspend fun album(id: String): AlbumDetail = remote.get(
         JmPaths.ALBUM,

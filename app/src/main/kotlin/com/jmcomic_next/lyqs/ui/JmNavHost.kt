@@ -1,12 +1,14 @@
 package com.jmcomic_next.lyqs.ui
 
+import android.net.Uri
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +31,7 @@ import androidx.navigation.navArgument
 import com.jmcomic_next.lyqs.data.prefs.ThemeMode
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
+import com.jmcomic_next.lyqs.ui.screens.category.CategoryScreen
 import com.jmcomic_next.lyqs.ui.screens.detail.DetailScreen
 import com.jmcomic_next.lyqs.ui.screens.home.HomeScreen
 import com.jmcomic_next.lyqs.ui.screens.profile.ProfileScreen
@@ -36,22 +39,37 @@ import com.jmcomic_next.lyqs.ui.screens.reader.ReaderScreen
 import com.jmcomic_next.lyqs.ui.screens.search.SearchScreen
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 
-/** 底部主导航。顺序即主线：浏览 → 检索 → 设置。 */
-private enum class MainTab(val route: String, val label: String, val icon: ImageVector) {
-    Home("home", "首页", Icons.Filled.Whatshot),
-    Search("search", "搜索", Icons.Filled.Search),
-    Profile("profile", "我的", Icons.Filled.Person),
+/**
+ * 底部主导航。
+ *
+ * [route] 是导航目标，[pattern] 是该目的地注册的路由模式 ——
+ * 两者在搜索页上不同（搜索带可选查询参数），高亮判断必须用 [pattern]。
+ */
+private enum class MainTab(
+    val route: String,
+    val pattern: String,
+    val label: String,
+    val icon: ImageVector,
+) {
+    Home("home", "home", "首页", Icons.Filled.Whatshot),
+    Category("category", "category", "分类", Icons.Filled.Sell),
+    Search("search", SEARCH_PATTERN, "搜索", Icons.Filled.Search),
+    Profile("profile", "profile", "我的", Icons.Filled.Person),
 }
 
+private const val SEARCH_PATTERN = "search?q={q}"
+private const val ARG_QUERY = "q"
 private const val ROUTE_DETAIL = "detail/{id}"
 private const val ROUTE_READ = "read/{id}"
+
+/** 按标签打开搜索页。分类页与详情页的标签都走这里。 */
+private fun searchFor(tag: String): String = "search?$ARG_QUERY=${Uri.encode(tag)}"
 
 /**
  * 应用导航图。
  *
- * 底部栏只出现在三个主 Tab 上；详情与阅读是沉浸式页面，进来就盖满全屏。
- * 因此底部栏的显示与否由**当前路由是否属于主 Tab**决定，而不是放在各页面内部，
- * 避免每个页面都要处理一次「底部要不要留白」。
+ * 底部栏只出现在四个主 Tab 上；详情与阅读是沉浸式页面，进来就盖满全屏。
+ * 由「当前路由是否属于主 Tab」决定底部栏显隐，而不是让每个页面各自处理留白。
  */
 @Composable
 fun JmNavHost(
@@ -64,7 +82,7 @@ fun JmNavHost(
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val currentRoute = entry?.destination?.route
-    val showBottomBar = MainTab.entries.any { it.route == currentRoute }
+    val showBottomBar = MainTab.entries.any { it.pattern == currentRoute }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -80,9 +98,9 @@ fun JmNavHost(
                     NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
                         MainTab.entries.forEach { tab ->
                             NavigationBarItem(
-                                selected = currentRoute == tab.route,
+                                selected = currentRoute == tab.pattern,
                                 onClick = {
-                                    if (currentRoute != tab.route) {
+                                    if (currentRoute != tab.pattern) {
                                         nav.navigate(tab.route) {
                                             // 单层栈：Tab 间切换不堆积历史
                                             popUpTo(MainTab.Home.route) { saveState = true }
@@ -111,15 +129,30 @@ fun JmNavHost(
                 HomeScreen(
                     dark = isDark,
                     onToggleTheme = {
-                        // 顶栏的快捷切换：在浅/深之间直接切换，不再回落到「跟随系统」
+                        // 顶栏快捷切换：在浅/深之间直接切，不再回落到「跟随系统」
                         onThemeModeChange(if (isDark) ThemeMode.Light else ThemeMode.Dark)
                     },
                     onOpenComic = { id -> nav.navigate("detail/$id") },
                 )
             }
 
-            composable(MainTab.Search.route) {
-                SearchScreen(onOpenComic = { id -> nav.navigate("detail/$id") })
+            composable(MainTab.Category.route) {
+                CategoryScreen(onOpenTag = { tag -> nav.navigate(searchFor(tag)) })
+            }
+
+            composable(
+                route = SEARCH_PATTERN,
+                arguments = listOf(
+                    navArgument(ARG_QUERY) {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                ),
+            ) { backStack ->
+                SearchScreen(
+                    onOpenComic = { id -> nav.navigate("detail/$id") },
+                    initialQuery = backStack.arguments?.getString(ARG_QUERY).orEmpty(),
+                )
             }
 
             composable(MainTab.Profile.route) {
@@ -141,6 +174,7 @@ fun JmNavHost(
                     onBack = { nav.popBackStack() },
                     onOpenComic = { next -> nav.navigate("detail/$next") },
                     onReadChapter = { chapterId -> nav.navigate("read/$chapterId") },
+                    onOpenTag = { tag -> nav.navigate(searchFor(tag)) },
                 )
             }
 

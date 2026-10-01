@@ -20,6 +20,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -95,14 +96,23 @@ class SearchViewModel(private val repo: JmRepository) : ViewModel() {
 fun SearchScreen(
     onOpenComic: (String) -> Unit,
     modifier: Modifier = Modifier,
+    initialQuery: String = "",
 ) {
     val repo = LocalRepository.current
     val vm: SearchViewModel = viewModel(
         factory = viewModelFactory { initializer { SearchViewModel(repo) } },
     )
     val state by vm.state.collectAsStateWithLifecycle()
-    var input by rememberSaveable { mutableStateOf("") }
+    var input by rememberSaveable { mutableStateOf(initialQuery) }
     val c = JmTheme.colors
+
+    // 从分类页带着标签进来时直接开搜，省掉一次手动确认
+    LaunchedEffect(initialQuery) {
+        if (initialQuery.isNotBlank()) {
+            vm.onQueryChange(initialQuery)
+            vm.search()
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         GlassTopBar(title = "搜索")

@@ -110,6 +110,7 @@ fun DetailScreen(
     onBack: () -> Unit,
     onOpenComic: (String) -> Unit,
     onReadChapter: (String) -> Unit,
+    onOpenTag: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalRepository.current
@@ -144,6 +145,7 @@ fun DetailScreen(
                 repo = repo,
                 onOpenComic = onOpenComic,
                 onReadChapter = onReadChapter,
+                onOpenTag = onOpenTag,
             )
         }
     }
@@ -155,6 +157,7 @@ private fun DetailContent(
     repo: JmRepository,
     onOpenComic: (String) -> Unit,
     onReadChapter: (String) -> Unit,
+    onOpenTag: (String) -> Unit,
 ) {
     val c = JmTheme.colors
     // 默认停在第一章所在的那一页目录
@@ -216,7 +219,9 @@ private fun DetailContent(
                     contentPadding = PaddingValues(horizontal = Spacing.lg),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 ) {
-                    items(detail.tags) { tag -> CategoryChip(tag) }
+                    items(detail.tags) { tag ->
+                        CategoryChip(tag, onClick = { onOpenTag(tag) })
+                    }
                 }
             }
         }
