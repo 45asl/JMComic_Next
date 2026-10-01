@@ -18,7 +18,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PATTERN='ad_content_all|advertise_all|adKey|adv_id|adv_img|adv_link|adv_recommend|adv_title|adv_text'
+# 必须带词边界：裸子串匹配会把 reloadKey 这类正常标识符里的 "adKey" 也算命中，
+# 误报会让检查逐渐被无视，比没有检查更糟。POSIX awk 没有 \y，故用显式字符类。
+PATTERN='(^|[^A-Za-z0-9_])(ad_content_all|advertise_all|adKey|adv_id|adv_img|adv_link|adv_recommend|adv_title|adv_text)([^A-Za-z0-9_]|$)'
 
 # 剥离注释后按模式匹配。用 awk 走一个小状态机，正确跨行处理块注释。
 run_check() {

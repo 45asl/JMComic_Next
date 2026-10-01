@@ -232,6 +232,21 @@ data class JmSettings(
      * 选中时 `comic_read` 会多带一个 `express=on`（见 [com.jmcomic_next.lyqs.data.JmRepository.read]）。
      */
     @SerialName("app_shunts") val appShunts: List<AppShunt> = emptyList(),
+
+    /**
+     * 服务端当前对应的**官方客户端**版本。
+     *
+     * 注意它指的是官方 App 的版本，不是本应用的版本 —— 因此不能拿它做「有新版本」的提示。
+     * 它的实际用处是**协议对齐的探针**：本应用在 `Tokenparam` 里上报的版本就是照官方版本填的，
+     * 一旦这里变化，说明服务端面向了新的客户端行为，当前实现可能需要跟进。
+     */
+    @SerialName("jm3_version") val jm3Version: String? = null,
+    /** 版本公告正文（官方按 `\n` 逐行渲染）。 */
+    @SerialName("jm3_version_info") val jm3VersionInfo: String? = null,
+    /** 官方客户端的下载地址。 */
+    @SerialName("jm3_download_url") val jm3DownloadUrl: String? = null,
+    /** 站点落地页。 */
+    @SerialName("app_landing_page") val appLandingPage: String? = null,
 )
 
 /** 图源/线路条目，`InterFace.ts` 的 `SettingData.app_shunts` 元素。 */

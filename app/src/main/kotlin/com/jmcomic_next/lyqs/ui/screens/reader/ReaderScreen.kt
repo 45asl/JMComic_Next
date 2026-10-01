@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -207,6 +208,7 @@ fun ReaderScreen(
     val prefs = remember(context) { AppPrefs(context) }
     var mode by remember { mutableStateOf(prefs.readerMode) }
     var barsVisible by remember { mutableStateOf(true) }
+    var pickerOpen by remember { mutableStateOf(false) }
     val c = JmTheme.colors
 
     val prev = vm.neighbour(-1)
@@ -305,10 +307,23 @@ fun ReaderScreen(
                         enabled = !state.switching,
                         onPrev = { prev?.let { vm.openChapter(it.id) } },
                         onNext = { next?.let { vm.openChapter(it.id) } },
+                        onOpenPicker = { pickerOpen = true },
                     )
                 }
             }
         }
+    }
+
+    if (pickerOpen) {
+        ChapterPickerDialog(
+            series = state.series,
+            currentChapterId = state.currentChapterId,
+            onDismiss = { pickerOpen = false },
+            onPick = { chapterId ->
+                pickerOpen = false
+                vm.openChapter(chapterId)
+            },
+        )
     }
 }
 
@@ -325,6 +340,7 @@ private fun ChapterSwitcher(
     enabled: Boolean,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    onOpenPicker: () -> Unit,
 ) {
     val c = JmTheme.colors
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -354,7 +370,10 @@ private fun ChapterSwitcher(
                     style = MaterialTheme.typography.labelSmall,
                     color = if (prevLabel != null) c.text else c.textTertiary,
                 )
-                Text("·", style = MaterialTheme.typography.labelSmall, color = c.textTertiary)
+                // 中间是可点入口：长篇只靠左右翻要翻到手酸，必须能直接跳
+                TextButton(onClick = onOpenPicker, enabled = enabled) {
+                    Text("选择章节", style = MaterialTheme.typography.labelSmall, color = c.accent)
+                }
                 Text(
                     text = nextLabel ?: "已是最后",
                     style = MaterialTheme.typography.labelSmall,

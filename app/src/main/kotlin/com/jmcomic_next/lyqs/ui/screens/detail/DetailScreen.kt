@@ -19,13 +19,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -86,6 +90,8 @@ data class DetailUiState(
     val folders: List<FavoriteFolder> = emptyList(),
     /** 上次读到的那一话（本地记录）。为空表示没读过或读的就是第一话。 */
     val lastChapterId: String? = null,
+    /** 点赞动作的结果提示。 */
+    val likeNotice: String? = null,
 )
 
 class DetailViewModel(
@@ -128,6 +134,44 @@ class DetailViewModel(
     }
 
     fun consumeFavoriteNotice() = _state.update { it.copy(favoriteNotice = null) }
+
+    fun consumeLikeNotice() = _state.update { it.copy(likeNotice = null) }
+
+    /**
+     * 点赞。
+     *
+     * 服务端允许匿名点赞，但官方仍要求登录后才可点（未登录时提示去登录），这里保持一致：
+     * 匿名点赞无法撤回也无法与账号关联，对用户没有实际价值。
+     *
+     * 点赞数是服务端计数，这里只做**乐观 +1**，不做本地持久化 ——
+     * 真正的口径以服务端为准，下次拉详情会被纠正。
+     */
+    fun like(onNeedLogin: () -> Unit) {
+        if (!repo.auth.isLoggedIn) {
+            onNeedLogin()
+            return
+        }
+        val detail = _state.value.detail ?: return
+        if (detail.liked) {
+            _state.update { it.copy(likeNotice = "已经点过赞了") }
+            return
+        }
+        viewModelScope.launch {
+            val result = runCatching { repo.like(comicId) }
+            val action = result.getOrNull()
+            val ok = action?.isOk == true
+            _state.update { prev ->
+                prev.copy(
+                    likeNotice = action?.msg ?: result.exceptionOrNull()?.message,
+                    detail = if (ok) {
+                        prev.detail?.copy(liked = true, likes = prev.detail.likes + 1)
+                    } else {
+                        prev.detail
+                    },
+                )
+            }
+        }
+    }
 
     fun dismissFolderPicker() = _state.update { it.copy(folderPickerVisible = false) }
 
@@ -221,6 +265,12 @@ fun DetailScreen(
             vm.consumeFavoriteNotice()
         }
     }
+    LaunchedEffect(state.likeNotice) {
+        if (state.likeNotice != null) {
+            kotlinx.coroutines.delay(2500)
+            vm.consumeLikeNotice()
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         GlassTopBar(
@@ -255,7 +305,7 @@ fun DetailScreen(
             },
         )
 
-        state.favoriteNotice?.let { notice ->
+        (state.favoriteNotice ?: state.likeNotice)?.let { notice ->
             GlassSurface(
                 modifier = Modifier.fillMaxWidth(),
                 level = GlassLevel.Card,
@@ -279,6 +329,7 @@ fun DetailScreen(
                 detail = state.detail!!,
                 repo = repo,
                 lastChapterId = state.lastChapterId,
+                onLike = { vm.like(onNeedLogin) },
                 onOpenComic = onOpenComic,
                 onReadChapter = onReadChapter,
                 onOpenTag = onOpenTag,
@@ -306,6 +357,7 @@ private fun DetailContent(
     onOpenComic: (String) -> Unit,
     onReadChapter: (String) -> Unit,
     onOpenTag: (String) -> Unit,
+    onLike: () -> Unit,
 ) {
     val c = JmTheme.colors
     // 默认停在第一章所在的那一页目录
@@ -354,11 +406,41 @@ private fun DetailContent(
                     Text(
                         text = buildString {
                             append("共 ${detail.totalPhotos} 页")
-                            if (detail.likes > 0) append(" · ${detail.likes} 赞")
+                            if (detail.commentTotal > 0) append(" · ${detail.commentTotal} 评论")
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = c.textTertiary,
                     )
+                    // 点赞：未点过用描边心形，点过用实心强调色
+                    Surface(
+                        shape = RoundedCornerShape(Radius.xs),
+                        color = if (detail.liked) c.accentSoft else c.surfaceSunken,
+                        onClick = onLike,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(
+                                horizontal = Spacing.sm,
+                                vertical = Spacing.xxs,
+                            ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = if (detail.liked) {
+                                    Icons.Filled.Favorite
+                                } else {
+                                    Icons.Filled.FavoriteBorder
+                                },
+                                contentDescription = if (detail.liked) "已点赞" else "点赞",
+                                tint = if (detail.liked) c.accent else c.textTertiary,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Text(
+                                text = " ${detail.likes}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (detail.liked) c.accent else c.textSecondary,
+                            )
+                        }
+                    }
                     detail.addTime?.takeIf { it.isNotBlank() }?.let {
                         Text("更新：$it", style = MaterialTheme.typography.labelSmall, color = c.textTertiary)
                     }
@@ -375,6 +457,32 @@ private fun DetailContent(
                 ) {
                     items(detail.author) { author ->
                         CategoryChip(author, onClick = { onOpenTag(author) })
+                    }
+                }
+            }
+        }
+
+        // 作品 / 演员：这两个字段此前被忽略，但它们是官方详情页展示的一部分
+        val metaRows = buildList {
+            if (detail.works.isNotEmpty()) add("作品" to detail.works)
+            if (detail.actors.isNotEmpty()) add("演员" to detail.actors)
+        }
+        metaRows.forEach { (label, values) ->
+            item(key = "meta-$label") {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = Spacing.lg),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    item {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = c.textTertiary,
+                        )
+                    }
+                    items(values) { value ->
+                        CategoryChip(value, onClick = { onOpenTag(value) })
                     }
                 }
             }

@@ -25,6 +25,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +39,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jmcomic_next.lyqs.BuildConfig
 import com.jmcomic_next.lyqs.data.prefs.ThemeMode
 import com.jmcomic_next.lyqs.data.remote.AdBlocker
+import com.jmcomic_next.lyqs.data.remote.JmSession
+import com.jmcomic_next.lyqs.data.remote.dto.JmSettings
 import com.jmcomic_next.lyqs.data.remote.dto.MemberInfo
 import com.jmcomic_next.lyqs.ui.LocalRepository
 import com.jmcomic_next.lyqs.ui.components.CategoryChip
@@ -87,6 +94,7 @@ fun ProfileScreen(
             item { AppearanceCard(themeMode, onThemeModeChange, dynamicColor, onDynamicColorChange) }
             item { PrivacyCard() }
             item { AboutCard() }
+            item { ServerCard() }
         }
     }
 }
@@ -267,6 +275,69 @@ private fun AboutCard() {
             color = c.textTertiary,
             modifier = Modifier.padding(top = Spacing.sm),
         )
+    }
+}
+
+/**
+ * 服务端信息与协议对齐状态。
+ *
+ * 这里刻意**不做成「检查更新」**：服务端回的 `jm3_version` 是官方 App 的版本，
+ * 与本应用的版本没有可比性，拿它提示「有新版本」是误导。
+ *
+ * 真正有用的是它作为**协议对齐探针**：本应用在 `Tokenparam` 里上报的版本是照官方版本填的
+ * （见 `JmSession.DEFAULT_CLIENT_VERSION`），一旦这里与服务端不一致，
+ * 说明服务端已在面向新的客户端行为，当前实现可能需要跟进。
+ */
+@Composable
+private fun ServerCard() {
+    val repo = LocalRepository.current
+    val c = JmTheme.colors
+    var settings by remember { mutableStateOf<JmSettings?>(null) }
+    var checked by remember { mutableStateOf(false) }
+    // 用递增的 key 驱动重读：LaunchedEffect(Unit) 只会跑一次，
+    // 若只把状态清空而不换 key，按钮点了不会有任何反应
+    var reloadKey by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(reloadKey) {
+        checked = false
+        settings = runCatching {
+            repo.bootstrap()
+            repo.settings()
+        }.getOrNull()
+        checked = true
+    }
+
+    val serverVersion = settings?.jm3Version?.takeIf { it.isNotBlank() }
+    val clientVersion = JmSession.DEFAULT_CLIENT_VERSION
+    val aligned = serverVersion == null || serverVersion == clientVersion
+
+    SettingCard(title = "服务端") {
+        InfoRow("服务端对应官方版本", serverVersion ?: if (checked) "未提供" else "读取中…")
+        InfoRow("本客户端上报版本", clientVersion)
+        InfoRow("协议对齐", if (aligned) "一致" else "可能已变化")
+
+        if (!aligned) {
+            Text(
+                text = "服务端对应的官方版本已变为 $serverVersion，而本客户端仍按 $clientVersion 上报。" +
+                    "这不代表立即不可用，但接口行为可能已按新版本调整，值得检查。",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.error,
+                modifier = Modifier.padding(top = Spacing.xs),
+            )
+        }
+
+        settings?.jm3VersionInfo?.takeIf { it.isNotBlank() }?.let { info ->
+            Text(
+                text = info,
+                style = MaterialTheme.typography.labelSmall,
+                color = c.textSecondary,
+                modifier = Modifier.padding(top = Spacing.sm),
+            )
+        }
+
+        TextButton(onClick = { reloadKey++ }) {
+            Text("重新读取", color = c.accent)
+        }
     }
 }
 
