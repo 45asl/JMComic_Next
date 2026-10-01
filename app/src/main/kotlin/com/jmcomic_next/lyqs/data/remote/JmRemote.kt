@@ -26,6 +26,8 @@ class JmRemote(val session: JmSession) {
     private val json = JmJson
 
     val okHttp: OkHttpClient = OkHttpClient.Builder()
+        // 放最前面：被判定为广告/追踪的请求不应产生任何流量
+        .addInterceptor(AdBlockerInterceptor())
         .addInterceptor { chain ->
             // Token 与 Tokenparam 每次请求现取：会话刷新后立刻生效
             val request = chain.request().newBuilder()
@@ -83,12 +85,12 @@ class JmRemote(val session: JmSession) {
     ): T = withContext(Dispatchers.IO) {
         val first = runCatching { fetch() }.getOrElse { throw it.toJmException() }
 
-        resolvePayload(first, url)?.let { return@withContext decode(it, deserializer) }
+        resolvePayload(first)?.let { return@withContext decode(it, deserializer) }
 
         // 解不开：可能是时间戳过期。刷新后原样重试一次。
         session.refresh()
         val second = runCatching { fetch() }.getOrElse { throw it.toJmException() }
-        val payload = resolvePayload(second, url)
+        val payload = resolvePayload(second)
             ?: throw JmException("响应解密失败，可能是客户端版本过旧", JmException.Kind.Decrypt)
 
         if (second.code != 200) {
@@ -105,10 +107,10 @@ class JmRemote(val session: JmSession) {
      *
      * @return 无法解密时返回 null（交给调用方决定是否重试）
      */
-    private fun resolvePayload(env: Envelope, url: String): String? {
+    private fun resolvePayload(env: Envelope): String? {
         val data = env.data ?: return null
         if (data is JsonPrimitive && data.isString) {
-            return JmCrypto.decryptApiData(data.content, session.time, url)
+            return JmCrypto.decryptApiData(data.content, session.time)
         }
         return data.toString()
     }

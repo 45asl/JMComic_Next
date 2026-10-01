@@ -32,9 +32,6 @@ object JmCrypto {
     /** 主机发现接口的固定密钥种子（源码 `Function.js` 的 `key`）。 */
     const val HOST_SEED = "diosfjckwpqpdfjkvnqQjsik"
 
-    /** 这些接口的密钥不带时间戳。对应源码里的 `adKey`。 */
-    private val TIME_INDEPENDENT_PATHS = listOf("ad_content_all", "advertise_all")
-
     /** 十六进制小写 MD5，与 npm `md5` 包的输出一致。 */
     fun md5(input: String): String {
         val bytes = MessageDigest.getInstance("MD5").digest(input.toByteArray(Charsets.UTF_8))
@@ -94,12 +91,14 @@ object JmCrypto {
      * 依次尝试两个种子，第一个能解出合法 JSON 的胜出；都失败返回 null
      * （源码此时会把 `response.data` 置为空字符串，由调用方当作「无数据」处理）。
      *
-     * @param url 用于判断是否属于广告接口
+     * 有意省略的一处：源码对**广告接口**用不带时间戳的密钥（`md5(seed)`）。
+     * 本应用不请求任何广告接口，那条分支不可达，因此没有移植 ——
+     * 保留一段只为「永不调用」的功能服务的代码是负债。
+     * 相关背景见 [com.jmcomic_next.lyqs.data.remote.AdBlocker]。
      */
-    fun decryptApiData(dataBase64: String, timeSeconds: Long, url: String): String? {
-        val timeIndependent = TIME_INDEPENDENT_PATHS.any { url.contains(it) }
+    fun decryptApiData(dataBase64: String, timeSeconds: Long): String? {
         for (seed in listOf(TOKEN_SEED, TOKEN_SEED_ALT)) {
-            val key = if (timeIndependent) md5(seed) else md5("$timeSeconds$seed")
+            val key = md5("$timeSeconds$seed")
             val plain = decryptEcb(dataBase64, key) ?: continue
             val trimmed = plain.trim()
             if (trimmed.startsWith("{") || trimmed.startsWith("[")) return trimmed

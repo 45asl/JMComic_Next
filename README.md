@@ -102,6 +102,52 @@ Token:      md5(<时间戳> + "185Hcomic3PAPP7R")
 - `search` → `{search_query,total,content}`，数组键是 `content` 而非 `list`，且 `total` 是字符串
 - `chapter` 接口**全项目零调用**，章节列表内嵌在 `album` 响应的 `series` 里
 
+## 广告与隐私
+
+**本应用无广告，且这一点是被审计和检查脚本保证的，不是碰巧如此。**
+
+### 官方客户端的广告从哪来
+
+审计 `JMComic3 v2.1.9` 的还原源码后，广告**全部**由客户端**主动拉取**，来源只有两处：
+
+| 接口 | 用途 |
+| --- | --- |
+| `ad_content_all` | 按 `adKey` 取素材。官方代码里定义了 **60 多个插槽**，覆盖首页（`app_home_top`、`app_home_float`）、详情（`app_detail_introduction_bottom_jm3`）、阅读（`app_chapter_top`、`app_thewayhome`、`app_chapter_last`）、影片、小说、论坛、搜索等 |
+| `advertise_all` | 启动时的四封面全屏广告 |
+
+素材的数据形态是 `{adv_id, adv_img, adv_link, adv_name, adv_text, adv_title, adv_recommend}`。
+
+另外官方 Web 端的 `index.html` 里**内联了 Microsoft Clarity 的埋点脚本**（站点 ID 直接写在 HTML 中）。
+
+### 审计结论
+
+- **服务端不会把广告混进业务载荷**。实测 `promote` / `latest` / `search` / `album` / `comic_read`
+  五个响应，均搜不到 `adv_` / `ad_content` / `advertise` 任何特征。
+- **阅读流的图片全部落在站点自己的 CDN 上**（实测 54 张图同一主机），没有第三方域名夹带。
+- 因此「无广告」等价于「不调用那两个接口、不实现任何插槽」——这正是本应用的实现方式。
+
+### 本应用的做法
+
+1. **不实现任何广告插槽，不调用任何广告接口。** 域名黑名单拦不住这两个接口（它们就在 API 主机上），
+   所以这一条靠代码层面不引入来保证。
+2. **网络层拦截第三方广告与追踪域名**（`AdBlocker`，覆盖广告交易/投放、行为分析、安装归因三类）。
+   拦截返回合成的 403 空响应而不是抛异常 —— 抛异常会让「被拦截」与「网络故障」在上层混为一谈。
+3. **图片通道共用同一个 OkHttpClient**。Coil 若不显式传入客户端会自建一个默认实例，
+   那样拦截器就只覆盖 API 流量，图片通道是敞开的。
+4. **不做任何行为采集。**
+
+### 如何验证
+
+```bash
+./scripts/check-no-ads.sh      # 源码出现广告接口/插槽/素材字段即失败
+```
+
+脚本会先剥掉注释再匹配 —— 因为 `AdBlocker` 的说明里**必须**写明这些接口与字段名，
+否则「防的是什么」无从理解。已验证三种情形：仅注释提及 → 通过；
+代码中出现 `adKey` → 失败；代码中出现 `adv_img` → 失败。
+
+设置页的「隐私与广告」栏会显示当前屏蔽的域名类数。
+
 ## 构建
 
 ```bash

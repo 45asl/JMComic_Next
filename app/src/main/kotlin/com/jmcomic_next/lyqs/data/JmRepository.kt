@@ -52,6 +52,14 @@ class JmRepository(private val remote: JmRemote) {
 
     private val session: JmSession get() = remote.session
 
+    /**
+     * 业务请求用的 OkHttpClient。
+     *
+     * 对外暴露是为了让 Coil 复用**同一个**客户端 —— 图片走的是独立通道，
+     * 若各自建客户端，[com.jmcomic_next.lyqs.data.remote.AdBlockerInterceptor] 就只保护了一半流量。
+     */
+    val okHttp get() = remote.okHttp
+
     /** 保证引导只跑一次的互斥锁 —— 多个页面同时进入时不应重复发现主机。 */
     private val bootstrapLock = Mutex()
     private var bootstrapped = false

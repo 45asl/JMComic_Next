@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.jmcomic_next.lyqs.BuildConfig
 import com.jmcomic_next.lyqs.data.prefs.ThemeMode
+import com.jmcomic_next.lyqs.data.remote.AdBlocker
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
@@ -50,6 +51,7 @@ fun ProfileScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             item { AppearanceCard(themeMode, onThemeModeChange, dynamicColor, onDynamicColorChange) }
+            item { PrivacyCard() }
             item { AboutCard() }
         }
     }
@@ -100,6 +102,31 @@ private fun AppearanceCard(
             }
             Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
         }
+    }
+}
+
+/**
+ * 隐私与广告。
+ *
+ * 这一栏存在的意义是把「无广告」从一句承诺变成界面上看得见的事实：
+ * 说明广告在官方客户端里从哪来（两个接口 + 60 多个插槽），
+ * 以及本应用为什么不会出现它们。
+ */
+@Composable
+private fun PrivacyCard() {
+    val c = JmTheme.colors
+    SettingCard(title = "隐私与广告") {
+        InfoRow("广告接口调用", "从不调用")
+        InfoRow("已屏蔽广告/追踪域名", "${AdBlocker.blockedDomainCount} 类")
+        Text(
+            text = "官方客户端的广告全部由客户端主动请求广告接口后自行插入，" +
+                "官方代码里定义了 60 多个插槽位置。本应用不实现任何插槽、不请求广告接口，" +
+                "并在网络层屏蔽第三方广告与追踪域名；图片通道共用同一个客户端，因此同样受拦截。" +
+                "另外不做任何行为采集。",
+            style = MaterialTheme.typography.labelSmall,
+            color = c.textTertiary,
+            modifier = Modifier.padding(top = Spacing.sm),
+        )
     }
 }
 

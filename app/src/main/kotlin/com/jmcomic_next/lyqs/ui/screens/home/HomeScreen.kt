@@ -20,8 +20,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -110,13 +114,19 @@ private fun HomeContent(
 ) {
     val c = JmTheme.colors
 
+    // 服务端的 promote 会一次性回几十个分区（实测 40+，且标题大量重复），
+    // 全部铺成横向行会让首页变成一条没有尽头的滚轴，也失去了「推荐」的意义。
+    // 因此默认只展开前几个，其余按需追加。
+    var visibleSections by rememberSaveable { mutableIntStateOf(INITIAL_SECTIONS) }
+    val sections = state.sections.filter { it.content.isNotEmpty() }.take(visibleSections)
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = Spacing.xxl),
         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
         // 推荐分区
-        state.sections.forEach { section ->
+        sections.forEach { section ->
             if (section.content.isEmpty()) return@forEach
 
             item(key = "sec-${section.id}-head") {
@@ -140,6 +150,24 @@ private fun HomeContent(
 
         if (state.promoteError != null && state.sections.isEmpty()) {
             item { ErrorBox(message = state.promoteError, onRetry = null) }
+        }
+
+        // 还有未展开的分区时给一个入口，避免默认就堆出几十行
+        val remaining = state.sections.count { it.content.isNotEmpty() } - sections.size
+        if (remaining > 0) {
+            item(key = "more-sections") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TextButton(onClick = { visibleSections += SECTION_STEP }) {
+                        Text(
+                            text = "展开更多分区（还有 $remaining 个）",
+                            color = JmTheme.colors.accent,
+                        )
+                    }
+                }
+            }
         }
 
         // 最新上架
@@ -194,6 +222,12 @@ private fun LoadMoreRow(loading: Boolean, onLoadMore: () -> Unit) {
         }
     }
 }
+
+/** 首页默认展开的推荐分区数。 */
+private const val INITIAL_SECTIONS = 3
+
+/** 每次「展开更多」追加的分区数。 */
+private const val SECTION_STEP = 6
 
 @Composable
 private fun SectionTitle(title: String) {

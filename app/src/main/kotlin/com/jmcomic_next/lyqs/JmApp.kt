@@ -30,7 +30,12 @@ class JmApp : Application(), SingletonImageLoader.Factory {
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
-            .components { add(OkHttpNetworkFetcherFactory()) }
+            .components {
+                // 复用业务请求的客户端：这样图片通道同样受 AdBlocker 保护，
+                // 也共享连接池与超时设置。若在此 new 一个默认客户端，
+                // 广告拦截器就只覆盖了 API 流量，图片通道是敞开的。
+                add(OkHttpNetworkFetcherFactory(callFactory = { repository.okHttp }))
+            }
             .crossfade(true)
             .build()
 
