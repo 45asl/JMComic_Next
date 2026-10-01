@@ -33,7 +33,17 @@ class HomeViewModel(private val repo: JmRepository) : ViewModel() {
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
-    private var page = 1
+    /**
+     * 最新的页码。
+     *
+     * **从 0 开始** —— 服务端的 `latest` 是 0-indexed，源码 `Main.tsx` 里甚至写着
+     * `// page 是 0-indexed（第一頁是 0）`，界面上显示的页码才 +1。
+     * 若这里按 1 起算，首屏会直接跳过真正的第一页。
+     */
+    private var page = 0
+
+    /** 每页条数。源码用 `Math.ceil(total / 30)` 算总页数。 */
+    private val pageSize = 30
 
     init {
         refresh()
@@ -41,7 +51,7 @@ class HomeViewModel(private val repo: JmRepository) : ViewModel() {
 
     /** 首屏加载与手动刷新。 */
     fun refresh() {
-        page = 1
+        page = 0
         _state.update { it.copy(loading = true, promoteError = null, latestError = null) }
 
         viewModelScope.launch {
@@ -54,7 +64,7 @@ class HomeViewModel(private val repo: JmRepository) : ViewModel() {
             }
 
             val promote = runCatching { repo.promote() }
-            val latest = runCatching { repo.latest(1) }
+            val latest = runCatching { repo.latest(0) }
 
             _state.update {
                 it.copy(
@@ -78,7 +88,9 @@ class HomeViewModel(private val repo: JmRepository) : ViewModel() {
     fun loadMore() {
         val s = _state.value
         if (s.loading || s.loadingMore || s.latestError != null || s.latest.isEmpty()) return
-        if (s.latestTotal in 1..s.latest.size) return
+        // 有 total 时按总页数判断（与源码 hasNextPage = page < pageLimit - 1 一致）；
+        // 服务端只回裸数组时无法预知终点，交给「本页为空」兜底
+        if (s.latestTotal > 0 && page >= (s.latestTotal + pageSize - 1) / pageSize - 1) return
 
         _state.update { it.copy(loadingMore = true) }
         viewModelScope.launch {

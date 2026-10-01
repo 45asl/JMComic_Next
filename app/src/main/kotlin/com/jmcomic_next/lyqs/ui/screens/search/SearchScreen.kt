@@ -55,6 +55,8 @@ data class SearchUiState(
     val results: List<ListItem> = emptyList(),
     /** 是否已发起过至少一次搜索 —— 用来区分「还没搜」和「搜了没结果」。 */
     val searched: Boolean = false,
+    /** 非空表示命中「按编号精确检索」，界面应直接打开该作品。 */
+    val redirectAid: String? = null,
 )
 
 class SearchViewModel(private val repo: JmRepository) : ViewModel() {
@@ -63,6 +65,9 @@ class SearchViewModel(private val repo: JmRepository) : ViewModel() {
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
     fun onQueryChange(q: String) = _state.update { it.copy(query = q) }
+
+    /** 跳转已被消费，清掉以免返回时反复触发。 */
+    fun consumeRedirect() = _state.update { it.copy(redirectAid = null) }
 
     fun search() {
         val q = _state.value.query.trim()
@@ -78,7 +83,8 @@ class SearchViewModel(private val repo: JmRepository) : ViewModel() {
                 s.copy(
                     loading = false,
                     searched = true,
-                    results = result.getOrNull()?.items.orEmpty(),
+                    results = result.getOrNull()?.page?.items.orEmpty(),
+                    redirectAid = result.getOrNull()?.redirectAid,
                     error = result.exceptionOrNull()?.message,
                 )
             }
@@ -105,6 +111,14 @@ fun SearchScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf(initialQuery) }
     val c = JmTheme.colors
+
+    // 命中「按编号精确检索」时直接打开作品，不展示列表
+    LaunchedEffect(state.redirectAid) {
+        state.redirectAid?.let { id ->
+            vm.consumeRedirect()
+            onOpenComic(id)
+        }
+    }
 
     // 从分类页带着标签进来时直接开搜，省掉一次手动确认
     LaunchedEffect(initialQuery) {

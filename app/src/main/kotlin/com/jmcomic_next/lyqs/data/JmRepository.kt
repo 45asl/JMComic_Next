@@ -37,6 +37,17 @@ import kotlinx.serialization.json.jsonPrimitive
  * 不做缓存：列表数据量小、刷新频繁，缓存带来的失效问题比收益大。
  * 需要跨页面复用的只有 [bootstrap] 的结果，而它本就存在 [JmSession] 里。
  */
+/**
+ * 搜索结果。
+ *
+ * 除了分页数据，还要带出 `redirect_aid` —— 按作品编号精确检索时服务端只回这一个字段，
+ * 客户端应直接跳详情（源码 `Search.tsx` 的行为）。
+ */
+data class SearchResult(
+    val page: PagedList = PagedList(),
+    val redirectAid: String? = null,
+)
+
 class JmRepository(private val remote: JmRemote) {
 
     private val session: JmSession get() = remote.session
@@ -129,7 +140,7 @@ class JmRepository(private val remote: JmRemote) {
         page: Int = 1,
         order: String? = null,
         type: String? = null,
-    ): PagedList {
+    ): SearchResult {
         val payload = remote.get(
             JmPaths.SEARCH,
             SearchPayload.serializer(),
@@ -140,8 +151,12 @@ class JmRepository(private val remote: JmRemote) {
                 type?.let { put("search_type", it) }
             },
         )
-        // 搜索的 total 是字符串，而 latest 的是数字 —— 各按各的形态取，统一成 Int
-        return PagedList(payload.content, payload.total?.toIntOrNull() ?: 0)
+        // 搜索的 total 是字符串，而 latest 的是数字 —— 各按各的形态取，统一成 Int。
+        // redirect_aid 非空表示「按作品编号精确命中」，应当直接打开详情而不是展示列表。
+        return SearchResult(
+            page = PagedList(payload.content, payload.total?.toIntOrNull() ?: 0),
+            redirectAid = payload.redirectAid?.takeIf { it.isNotBlank() },
+        )
     }
 
     /**

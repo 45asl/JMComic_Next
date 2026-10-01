@@ -194,8 +194,14 @@ private fun DetailContent(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    detail.author?.takeIf { it.isNotBlank() }?.let {
-                        Text("作者：$it", style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
+                    if (detail.author.isNotEmpty()) {
+                        Text(
+                            text = "作者：" + detail.author.joinToString("、"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = c.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                     Text(
                         text = buildString {
@@ -207,6 +213,20 @@ private fun DetailContent(
                     )
                     detail.addTime?.takeIf { it.isNotBlank() }?.let {
                         Text("更新：$it", style = MaterialTheme.typography.labelSmall, color = c.textTertiary)
+                    }
+                }
+            }
+        }
+
+        // 作者（可点，跳同作者搜索）
+        if (detail.author.isNotEmpty()) {
+            item(key = "authors") {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = Spacing.lg),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    items(detail.author) { author ->
+                        CategoryChip(author, onClick = { onOpenTag(author) })
                     }
                 }
             }

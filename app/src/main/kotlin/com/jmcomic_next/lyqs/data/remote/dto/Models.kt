@@ -63,6 +63,12 @@ data class SearchPayload(
     @SerialName("search_query") val searchQuery: String? = null,
     @Serializable(with = FlexStringOrNull::class) val total: String? = null,
     val content: List<ListItem> = emptyList(),
+    /**
+     * 命中「按作品编号精确检索」时服务端会回这个字段，客户端应**直接跳到详情**而不是展示列表。
+     * 依据 `Search.tsx`：`if (redirect_aid) navigate('/comic/detail?id=' + redirect_aid)` 并中止。
+     */
+    @SerialName("redirect_aid")
+    @Serializable(with = FlexStringOrNull::class) val redirectAid: String? = null,
 )
 
 /** 「查看更多」响应（`InterFace.ts` 的 `MoreListResponse.data`）。数组键是 `list`。 */
@@ -82,7 +88,12 @@ data class MoreListPayload(
 data class AlbumDetail(
     @Serializable(with = FlexString::class) val id: String = "",
     val name: String? = null,
-    val author: String? = null,
+    /**
+     * 作者是**数组**而不是字符串 —— 依据 `Desc.tsx` 的
+     * `detailList.author?.map((auther: string, i) => ...)`，且每个作者都可点击跳标签搜索。
+     * 用 [FlexStringList] 以同时容忍服务端回 `"a,b"` 这种逗号串的历史形态。
+     */
+    @Serializable(with = FlexStringList::class) val author: List<String> = emptyList(),
     @Serializable(with = FlexStringList::class) val actors: List<String> = emptyList(),
     @Serializable(with = FlexStringList::class) val tags: List<String> = emptyList(),
     @Serializable(with = FlexStringList::class) val works: List<String> = emptyList(),
@@ -164,6 +175,18 @@ data class JmSettings(
     @SerialName("is_cn")
     @Serializable(with = FlexBool::class) val isCn: Boolean = false,
     val version: String? = null,
+    /**
+     * 图源/线路列表。`key == 0` 是官方客户端里的「快速线路」，
+     * 选中时 `comic_read` 会多带一个 `express=on`（见 [com.jmcomic_next.lyqs.data.JmRepository.read]）。
+     */
+    @SerialName("app_shunts") val appShunts: List<AppShunt> = emptyList(),
+)
+
+/** 图源/线路条目，`InterFace.ts` 的 `SettingData.app_shunts` 元素。 */
+@Serializable
+data class AppShunt(
+    @Serializable(with = FlexInt::class) val key: Int = 0,
+    val title: String? = null,
 )
 
 /**
