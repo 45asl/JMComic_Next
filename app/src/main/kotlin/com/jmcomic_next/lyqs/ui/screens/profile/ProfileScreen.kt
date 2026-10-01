@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jmcomic_next.lyqs.BuildConfig
+import com.jmcomic_next.lyqs.data.prefs.ReaderMode
 import com.jmcomic_next.lyqs.data.prefs.ThemeMode
 import com.jmcomic_next.lyqs.data.remote.AdBlocker
 import com.jmcomic_next.lyqs.data.remote.JmSession
@@ -64,6 +65,8 @@ fun ProfileScreen(
     onThemeModeChange: (ThemeMode) -> Unit,
     dynamicColor: Boolean,
     onDynamicColorChange: (Boolean) -> Unit,
+    readerMode: ReaderMode,
+    onReaderModeChange: (ReaderMode) -> Unit,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
     onOpenFavorites: () -> Unit,
@@ -92,6 +95,7 @@ fun ProfileScreen(
                 )
             }
             item { AppearanceCard(themeMode, onThemeModeChange, dynamicColor, onDynamicColorChange) }
+            item { ReadingCard(readerMode, onReaderModeChange) }
             item { PrivacyCard() }
             item { AboutCard() }
             item { ServerCard() }
@@ -239,6 +243,48 @@ private fun AppearanceCard(
             }
             Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
         }
+    }
+}
+
+/**
+ * 阅读设置。
+ *
+ * 阅读页顶栏也能切换形态，但那是在「正在读」的时候改；这里决定的是**下次打开用什么形态**。
+ * 两处都要有：前者用于当下调整，后者用于设定默认。
+ */
+@Composable
+private fun ReadingCard(
+    readerMode: ReaderMode,
+    onReaderModeChange: (ReaderMode) -> Unit,
+) {
+    val c = JmTheme.colors
+    SettingCard(title = "阅读") {
+        Text("默认浏览形态", style = MaterialTheme.typography.bodyLarge, color = c.text)
+        SingleChoiceSegmentedButtonRow(
+            modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
+        ) {
+            ReaderMode.entries.forEachIndexed { index, mode ->
+                SegmentedButton(
+                    selected = readerMode == mode,
+                    onClick = { onReaderModeChange(mode) },
+                    shape = SegmentedButtonDefaults.itemShape(index, ReaderMode.entries.size),
+                ) {
+                    Text(
+                        text = when (mode) {
+                            ReaderMode.Scroll -> "纵向滚动"
+                            ReaderMode.Page -> "横向翻页"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+        }
+        Text(
+            text = "纵向滚动适合长条页，横向翻页适合单页构图的作品。阅读页顶栏可临时切换。",
+            style = MaterialTheme.typography.labelSmall,
+            color = c.textTertiary,
+            modifier = Modifier.padding(top = Spacing.sm),
+        )
     }
 }
 

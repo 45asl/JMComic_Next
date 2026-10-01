@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             var themeMode by remember { mutableStateOf(prefs.themeMode) }
             var dynamicColor by remember { mutableStateOf(prefs.dynamicColor) }
+            var readerMode by remember { mutableStateOf(prefs.readerMode) }
 
             val systemDark = isSystemInDarkTheme()
             val isDark = when (themeMode) {
@@ -47,6 +48,11 @@ class MainActivity : ComponentActivity() {
                 JmTheme(darkTheme = isDark, dynamicColor = dynamicColor) {
                     AmbientBackdrop {
                         JmNavHost(
+                            readerMode = readerMode,
+                            onReaderModeChange = {
+                                readerMode = it
+                                prefs.readerMode = it
+                            },
                             themeMode = themeMode,
                             onThemeModeChange = {
                                 themeMode = it

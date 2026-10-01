@@ -17,7 +17,7 @@
 | 搜索（关键词、排序、检索字段、年份；历史与热门标签） | 完成 |
 | 详情（元信息 / 标签 / 作品 / 演员 / 点赞 / 简介 / 继续阅读 / 章节目录分页 / 相关推荐） | 完成 |
 | 阅读（两种浏览形态、上一话/下一话、章节选择器、沉浸模式、双指缩放、切片还原） | 完成 |
-| 我的（账号、主题、动态取色、隐私、关于） | 完成 |
+| 我的（账号、主题、动态取色、阅读形态、隐私、服务端、关于） | 完成 |
 | 账号：登录 / 注册 / 忘记密码 / 登出 | 完成 |
 | 收藏（详情页收藏按钮、收藏列表、收藏夹切换与移动） | 完成 |
 | 收藏夹管理（新建 / 改名 / 删除；收藏后引导归类） | 完成 |
@@ -248,10 +248,67 @@ token 的真实有效期由服务端决定。正确做法是正常使用，直�
 ## 构建
 
 ```bash
-gradle :app:assembleDebug     # 产物：app/build/outputs/apk/debug/app-debug.apk
+gradle :app:assembleDebug      # app/build/outputs/apk/debug/app-debug.apk
+gradle :app:assembleRelease    # app/build/outputs/apk/release/app-release.apk（R8 + 资源压缩）
 ```
 
 要求 JDK 17+（实测 JDK 21）与 AGP 9.4.1（Gradle 9.8+）。
+
+实测体积：**debug 23.8 MB → release 2.8 MB（缩减 88%）**。
+debug 的体积主要来自未被裁剪的 Compose 与 `material-icons-extended`（图标按需保留）。
+debug 变体带 `.debug` 后缀，可与 release 包同时安装。
+
+### Release 签名
+
+签名信息放在 `keystore.properties`（**不入库**，见 .gitignore），密钥库本身也在仓库之外：
+
+```properties
+storeFile=/path/to/jm-release.jks
+storePassword=…
+keyAlias=…
+keyPassword=…
+```
+
+文件不存在时 release 包不签名，其余构建流程照常 —— 否则别人 clone 之后连 `assembleDebug` 都跑不起来。
+
+### 一个必须知道的环境规避：关闭 AGP 的资源优化
+
+`gradle.properties` 里有一行看起来可有可无、实际**不能删**的设置：
+
+```properties
+android.enableResourceOptimizations=false
+```
+
+原因：在本环境（aarch64 + `aapt2FromMavenOverride` 指向 arm64 版 aapt2）下，
+AGP 的 `optimizeReleaseResources` 步骤会产出**空的资源表**，后果是 release 包只剩 111 个条目：
+
+- 没有 `AndroidManifest.xml`
+- 没有 `resources.arsc`
+- `apksigner verify` 报 `Missing AndroidManifest.xml`
+- `pm install` 直接失败
+
+**debug 变体不走这个步骤，因此一直正常 —— 问题只在发布包里出现**，
+非常容易一路构建到「包都出来了」才发现装不上。
+
+排查过程（逐项排除，每一步都是实测）：关闭 `isShrinkResources` → 仍缺失；
+关闭 `isMinifyEnabled` → 仍缺失；移除 `packaging {}` 块 → 仍缺失；
+关掉 `enableResourceOptimizations` → **立即恢复**为 1039 个条目并含 manifest 与 `resources.arsc`。
+
+代价是不再做资源的无用条目裁剪，体积略大 —— 换一个装得上的发布包，值得。
+
+### R8 验证
+
+混淆的问题只在运行时暴露，因此每次开启 R8 后都应实测：
+
+```bash
+gradle :app:assembleRelease
+# 装机 → 冷启动 → 确认无崩溃 → 清空应用缓存后重启 → 确认列表与封面正常载入
+```
+
+`proguard-rules.pro` 里的每条规则都对应一个具体的运行时失败模式
+（Retrofit 的注解+泛型接口、kotlinx.serialization 的生成序列化器、泛型签名属性），
+不是「保险起见先加上」。实测清空缓存后重新载入，主机发现、解密、
+反序列化与封面下载均正常。
 
 ### 在 aarch64 设备（Termux）上构建
 

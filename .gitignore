@@ -17,3 +17,8 @@ local.properties
 *.iml
 .DS_Store
 captures/
+
+# 本地签名配置（含口令，绝不入库）
+keystore.properties
+*.jks
+*.keystore

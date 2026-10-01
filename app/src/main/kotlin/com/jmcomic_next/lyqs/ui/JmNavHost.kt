@@ -30,6 +30,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.jmcomic_next.lyqs.data.prefs.ReaderMode
 import com.jmcomic_next.lyqs.data.prefs.ThemeMode
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
@@ -81,6 +82,8 @@ private fun searchFor(tag: String): String = "search?$ARG_QUERY=${Uri.encode(tag
  */
 @Composable
 fun JmNavHost(
+    readerMode: ReaderMode,
+    onReaderModeChange: (ReaderMode) -> Unit,
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
     dynamicColor: Boolean,
@@ -174,6 +177,8 @@ fun JmNavHost(
                     onThemeModeChange = onThemeModeChange,
                     dynamicColor = dynamicColor,
                     onDynamicColorChange = onDynamicColorChange,
+                    readerMode = readerMode,
+                    onReaderModeChange = onReaderModeChange,
                     onLogin = { nav.navigate(ROUTE_AUTH) },
                     onLogout = {
                         // 登出要走接口，但本地登出不依赖它成功（见 JmRepository.logout）
