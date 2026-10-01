@@ -170,6 +170,52 @@ data class ReadImage(
         get() = image.substringAfterLast('/').substringBeforeLast('.')
 }
 
+/**
+ * 分类树（`categories` 接口）。
+ *
+ * 两个互补的部分：
+ *  - [categories] 是层级导航，父分类下挂子分类
+ *  - [blocks] 是若干组标签（`content` 为纯字符串），用于「按标签浏览」
+ *
+ * 筛选时传给 `categories/filter` 的 `c` 参数取 `slug`，
+ * 若选了子分类则取 `"<父 slug>_<子 slug>"`（官方 `Header.tsx` 的拼法）。
+ */
+@Serializable
+data class CategoriesPayload(
+    val categories: List<CategoryNode> = emptyList(),
+    val blocks: List<CategoryBlock> = emptyList(),
+)
+
+/** 分类节点。 */
+@Serializable
+data class CategoryNode(
+    @Serializable(with = FlexString::class) val slug: String = "",
+    val name: String? = null,
+    @SerialName("sub_categories") val subCategories: List<SubCategory> = emptyList(),
+)
+
+/** 子分类。 */
+@Serializable
+data class SubCategory(
+    @Serializable(with = FlexString::class) val slug: String = "",
+    val name: String? = null,
+)
+
+/** 一组标签。 */
+@Serializable
+data class CategoryBlock(
+    val title: String? = null,
+    @Serializable(with = FlexStringList::class) val content: List<String> = emptyList(),
+)
+
+/** 分类筛选结果（`categories/filter` 接口）。数组键是 `content`，与搜索一致。 */
+@Serializable
+data class CategoryFilterPayload(
+    val content: List<ListItem> = emptyList(),
+    @Serializable(with = FlexStringList::class) val tags: List<String> = emptyList(),
+    @Serializable(with = FlexStringOrNull::class) val total: String? = null,
+)
+
 /** 应用配置（`setting` 接口，`InterFace.ts` 的 `SettingData`）。只保留客户端会用到的字段。 */
 @Serializable
 data class JmSettings(

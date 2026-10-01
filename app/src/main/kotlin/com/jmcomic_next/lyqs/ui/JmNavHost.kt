@@ -137,7 +137,10 @@ fun JmNavHost(
             }
 
             composable(MainTab.Category.route) {
-                CategoryScreen(onOpenTag = { tag -> nav.navigate(searchFor(tag)) })
+                CategoryScreen(
+                    onOpenTag = { tag -> nav.navigate(searchFor(tag)) },
+                    onOpenComic = { id -> nav.navigate("detail/$id") },
+                )
             }
 
             composable(

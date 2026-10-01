@@ -9,6 +9,8 @@ import com.jmcomic_next.lyqs.data.remote.JmPaths
 import com.jmcomic_next.lyqs.data.remote.JmRemote
 import com.jmcomic_next.lyqs.data.remote.JmSession
 import com.jmcomic_next.lyqs.data.remote.dto.AlbumDetail
+import com.jmcomic_next.lyqs.data.remote.dto.CategoriesPayload
+import com.jmcomic_next.lyqs.data.remote.dto.CategoryFilterPayload
 import com.jmcomic_next.lyqs.data.remote.dto.JmSettings
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
 import com.jmcomic_next.lyqs.data.remote.dto.PagedList
@@ -191,6 +193,39 @@ class JmRepository(private val remote: JmRemote) {
                 else -> emptyList()
             }
         }
+
+    /** 分类树与标签组。 */
+    suspend fun categories(): CategoriesPayload = remote.get(
+        JmPaths.CATEGORIES,
+        CategoriesPayload.serializer(),
+    )
+
+    /**
+     * 按分类筛选作品。
+     *
+     * @param c 分类标识。父分类传 `slug`，子分类传 `"<父 slug>_<子 slug>"`。
+     *   **为空时整个 `c` 参数会被省略** —— 实测发 `c=` 会让服务端返回
+     *   `Could not connect to mysql!` 错误页（不是 JSON），而省略 `c` 是合法的
+     *   「不筛选」语义（返回全站结果）。分类树里第一个「最新A漫」的 slug 正是空串。
+     * @param order 排序键。分类筛选除搜索那几档外还多出月榜 `mv_m` 与周榜 `mp_w`
+     *   （官方 `CatSortData`），搜索接口没有这两个。
+     */
+    suspend fun categoryFilter(
+        c: String?,
+        page: Int = 1,
+        order: String? = null,
+    ): PagedList {
+        val payload = remote.get(
+            JmPaths.CATEGORIES_FILTER,
+            CategoryFilterPayload.serializer(),
+            buildMap {
+                c?.takeIf { it.isNotBlank() }?.let { put("c", it) }
+                put("page", page.toString())
+                order?.let { put("o", it) }
+            },
+        )
+        return PagedList(payload.content, payload.total?.toIntOrNull() ?: 0)
+    }
 
     /** 漫画详情。 */
     suspend fun album(id: String): AlbumDetail = remote.get(
