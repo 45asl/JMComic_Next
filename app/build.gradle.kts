@@ -42,6 +42,21 @@ android {
         }
     }
 
+    /**
+     * release 构建不跑 lint。
+     *
+     * 实测：`lintVitalAnalyzeRelease` 单任务耗时 56 秒，占 release 构建总时长的 **77%**
+     * （总 73 秒里它占 56 秒），是这台设备上最大的单项开销。
+     *
+     * lintVital 是「致命问题检查」，属于质量门禁而不是构建的必要环节。
+     * 把它从每次构建里摘出来、改成需要时显式运行（`gradle :app:lint`），
+     * 能在不放松要求的前提下把日常迭代时间砍掉大半 ——
+     * 每次构建都跑一遍静态分析，收益远低于它占用的时间。
+     */
+    lint {
+        checkReleaseBuilds = false
+    }
+
     buildTypes {
         release {
             // R8 混淆 + 资源压缩。debug 包未混淆时有 24MB，主要体积来自未被裁剪的

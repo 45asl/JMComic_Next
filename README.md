@@ -328,6 +328,35 @@ AGP 的 `optimizeReleaseResources` 步骤会产出**空的资源表**，后果�
 
 代价是不再做资源的无用条目裁剪，体积略大 —— 换一个装得上的发布包，值得。
 
+### 构建耗时：实测的瓶颈与取舍
+
+用 `--profile` 逐任务测量后，**最大的单项开销不是 R8，而是 lint**：
+
+| 任务 | 耗时 | 占比 |
+| --- | --- | --- |
+| `lintVitalAnalyzeRelease` | **55.9s** | **77%** |
+| `compileReleaseKotlin` | 8.8s | 12% |
+| 其余全部 | < 2s 各 | — |
+
+因此 `app/build.gradle.kts` 里关掉了 release 的 lintVital（`lint { checkReleaseBuilds = false }`）。
+**同样条件下（同类改动、均带 `--no-build-cache`）release 构建从 73 秒降到 34 秒。**
+
+丢掉的只是一道**质量门禁**，不是构建的必要环节 —— 需要时显式运行 `gradle :app:lint` 即可，
+比在每次构建里都跑一遍静态分析划算得多。
+
+已启用的构建缓存与配置缓存（`org.gradle.configuration-cache` / `org.gradle.caching`）
+让「无改动」构建降到 4 秒左右。
+
+**顺带记录两条走过的弯路，避免以后重复尝试：**
+
+1. **调 CPU 频率没有用。** 实测在本机（aarch64，已因发热被限频，`policy0` 上限
+   1363200 而硬件上限 3532800）抬高 `scaling_min_freq` 后，固定工作量的
+   4 线程 SHA256 基准为 2369/2217ms → 2000/2375ms，**差异完全落在噪声里**。
+   而且 `scaling_governor` 连 root 都写不进（vendor 锁死）。
+   受限的是热与内存，不是频率档位。
+2. **`org.gradle.workers.max=2` 是个错误的自作聪明。** 当时以为内存紧张就该压低并行度，
+   实际测下来没有任何收益，反而让构建更慢。已移除，改用默认并行度。
+
 ### R8 验证
 
 混淆的问题只在运行时暴露，因此每次开启 R8 后都应实测：
