@@ -36,7 +36,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -95,10 +97,8 @@ class AccountListViewModel(
     private val pageSize = 20
     private var page = 1
 
-    init {
-        load()
-    }
-
+    // 不再在 init 里加载：改由界面的 ON_RESUME 触发，这样「从详情页取消收藏后返回」
+    // 也会重新拉取，而不是显示进入本页那一刻的旧快照。
     fun consumeNotice() = _state.update { it.copy(notice = null) }
 
     fun load() {
@@ -251,6 +251,9 @@ fun AccountListScreen(
 
     var dialog by remember { mutableStateOf<FolderDialog>(FolderDialog.None) }
     val isFavorites = kind == AccountListKind.Favorites
+
+    // 进入与返回本页时都重新拉取（含从详情页取消收藏后返回的情形）
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.load() }
 
     // 操作结果只提示一次
     LaunchedEffect(state.notice) {

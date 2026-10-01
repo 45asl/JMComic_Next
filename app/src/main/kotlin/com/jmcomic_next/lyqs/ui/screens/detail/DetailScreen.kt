@@ -33,6 +33,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -107,8 +109,24 @@ class DetailViewModel(
         load()
     }
 
-    fun load() {
-        _state.update { it.copy(loading = true, error = null) }
+    fun load() = fetch(showLoading = true)
+
+    /**
+     * 静默刷新。
+     *
+     * 与 [load] 的差别是**不把 loading 置为 true**：从阅读页或收藏列表返回时，
+     * 页面需要的是「校正已有状态」（例如收藏标记可能已在别处被改掉），
+     * 而不是重来一次。若置 loading，`state.detail` 会短暂为 null，
+     * 内容区会闪成加载态，章节目录的分页位置也会随之丢失。
+     */
+    fun refresh() {
+        if (_state.value.detail == null) load() else fetch(showLoading = false)
+    }
+
+    private fun fetch(showLoading: Boolean) {
+        if (showLoading) {
+            _state.update { it.copy(loading = true, error = null) }
+        }
         viewModelScope.launch {
             val result = runCatching {
                 repo.bootstrap()
@@ -265,6 +283,9 @@ fun DetailScreen(
             vm.consumeFavoriteNotice()
         }
     }
+    // 回到本页时静默校正一次：收藏状态可能在收藏列表里被改过
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
+
     LaunchedEffect(state.likeNotice) {
         if (state.likeNotice != null) {
             kotlinx.coroutines.delay(2500)

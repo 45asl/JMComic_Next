@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -229,17 +230,22 @@ fun ReaderScreen(
             )
 
             else -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(if (mode == ReaderMode.Page) Color.Black else Color.Transparent)
-                        .pointerInput(mode) {
-                            detectTapGestures(onTap = { barsVisible = !barsVisible })
-                        },
-                ) {
-                    when (mode) {
-                        ReaderMode.Scroll -> ScrollReader(payload, repo)
-                        ReaderMode.Page -> PagedReader(payload, repo, barsVisible)
+                // 用章节 id 作为 key：换话时整体重建，LazyColumn 的滚动位置与 Pager 的页码
+                // 才会归零。否则「跳到第 200 话」会停在第 200 话的中段 —— 因为滚动状态
+                // 属于组合，而组合在换话时并没有被替换。
+                key(state.currentChapterId) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(if (mode == ReaderMode.Page) Color.Black else Color.Transparent)
+                            .pointerInput(mode) {
+                                detectTapGestures(onTap = { barsVisible = !barsVisible })
+                            },
+                    ) {
+                        when (mode) {
+                            ReaderMode.Scroll -> ScrollReader(payload, repo)
+                            ReaderMode.Page -> PagedReader(payload, repo, barsVisible)
+                        }
                     }
                 }
 

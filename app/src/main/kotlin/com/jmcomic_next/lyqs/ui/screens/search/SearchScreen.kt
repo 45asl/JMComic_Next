@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -80,6 +83,9 @@ data class SearchUiState(
     val hotTags: List<String> = emptyList(),
     /** 本地搜索历史，最近的在前。 */
     val history: List<String> = emptyList(),
+    /** 结果总数（服务端以字符串下发）。 */
+    val total: Int = 0,
+    val loadingMore: Boolean = false,
 )
 
 class SearchViewModel(
@@ -89,6 +95,10 @@ class SearchViewModel(
 
     private val _state = MutableStateFlow(SearchUiState(history = prefs.searchHistory))
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
+
+    /** 搜索每页 80 条，与官方一致（`Math.ceil(total / 80)`）。 */
+    private val pageSize = 80
+    private var page = 1
 
     init {
         loadHotTags()
@@ -130,6 +140,7 @@ class SearchViewModel(
         // 记历史放在发起请求之前：用户按下搜索就代表这次检索意图成立，
         // 哪怕请求失败，这个词也仍然是他想搜的
         prefs.addSearchHistory(q)
+        page = 1
         _state.update { it.copy(loading = true, error = null, history = prefs.searchHistory) }
 
         viewModelScope.launch {
@@ -154,8 +165,55 @@ class SearchViewModel(
                     loading = false,
                     searched = true,
                     results = items,
+                    total = result.getOrNull()?.page?.total ?: 0,
                     redirectAid = result.getOrNull()?.redirectAid,
                     error = result.exceptionOrNull()?.message,
+                )
+            }
+        }
+    }
+
+    /**
+     * 加载下一页。
+     *
+     * 带筛选条件一起请求：筛选改动会重置到第一页，若加载更多时用了旧的筛选，
+     * 会把两组不同条件的结果拼在一起 —— 这种错误在界面上表现为「列表内容前后不一致」，
+     * 很难被用户描述清楚，所以一开始就不能让它发生。
+     */
+    fun loadMore() {
+        val s = _state.value
+        val q = s.query.trim()
+        if (q.isEmpty() || s.loading || s.loadingMore) return
+        if (s.results.isEmpty() || s.redirectAid != null) return
+        if (s.total > 0 && s.results.size >= s.total) return
+
+        val f = s.filters
+        _state.update { it.copy(loadingMore = true) }
+        viewModelScope.launch {
+            val next = page + 1
+            val result = runCatching {
+                repo.search(
+                    query = q,
+                    page = next,
+                    order = f.order,
+                    type = f.type,
+                    year = f.year.takeIf { it.isNotEmpty() },
+                    month = f.month.takeIf { it.isNotEmpty() },
+                )
+            }
+            _state.update { prev ->
+                var more = result.getOrNull()?.page?.items.orEmpty()
+                val ok = result.isSuccess
+                if (ok && more.isNotEmpty()) page = next
+                var merged = if (ok) prev.results + more else prev.results
+                if (f.isLocalOldest && ok) {
+                    merged = merged.sortedBy { it.addDate.orEmpty() }
+                }
+                prev.copy(
+                    loadingMore = false,
+                    results = merged,
+                    total = result.getOrNull()?.page?.total ?: prev.total,
+                    error = if (ok) prev.error else result.exceptionOrNull()?.message,
                 )
             }
         }
@@ -298,6 +356,15 @@ fun SearchScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
+                if (state.total > 0) {
+                    item(key = "count") {
+                        Text(
+                            text = "共 ${state.total} 条结果",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = c.textTertiary,
+                        )
+                    }
+                }
                 items(state.results, key = { it.id }) { comic ->
                     Box(Modifier.fillMaxWidth()) {
                         ComicRow(
@@ -305,6 +372,31 @@ fun SearchScreen(
                             coverUrl = repo.coverUrl(comic),
                             onClick = { onOpenComic(comic.id) },
                         )
+                    }
+                }
+                item(key = "footer") {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (state.loadingMore) {
+                            CircularProgressIndicator(
+                                color = c.accent,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        } else {
+                            LaunchedEffect(state.results.size) { vm.loadMore() }
+                            Text(
+                                text = if (state.total > 0 && state.results.size >= state.total) {
+                                    "已经到底了"
+                                } else {
+                                    "上滑加载更多"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = c.textTertiary,
+                            )
+                        }
                     }
                 }
             }
