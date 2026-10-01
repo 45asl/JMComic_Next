@@ -47,6 +47,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import coil3.compose.AsyncImage
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.remote.dto.AlbumDetail
+import com.jmcomic_next.lyqs.data.remote.dto.FavoriteFolder
 import com.jmcomic_next.lyqs.data.remote.dto.SeriesItem
 import com.jmcomic_next.lyqs.ui.LocalRepository
 import com.jmcomic_next.lyqs.ui.components.CategoryChip
@@ -55,6 +56,7 @@ import com.jmcomic_next.lyqs.ui.components.ErrorBox
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
+import com.jmcomic_next.lyqs.ui.screens.favorites.FolderPickerDialog
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
@@ -72,6 +74,13 @@ data class DetailUiState(
     val togglingFavorite: Boolean = false,
     /** 收藏操作的结果提示，展示一次后由界面清除。 */
     val favoriteNotice: String? = null,
+    /**
+     * 收藏成功后展示的收藏夹选择器。
+     * 官方在这个时机弹出归类对话框（`FETCH_ADD_FAVORITE_THUNK` 返回 add/move/edit 后
+     * 会把 `dialogOpen.folder` 置为 true），这里保持一致。
+     */
+    val folderPickerVisible: Boolean = false,
+    val folders: List<FavoriteFolder> = emptyList(),
 )
 
 class DetailViewModel(
@@ -105,6 +114,19 @@ class DetailViewModel(
 
     fun consumeFavoriteNotice() = _state.update { it.copy(favoriteNotice = null) }
 
+    fun dismissFolderPicker() = _state.update { it.copy(folderPickerVisible = false) }
+
+    /** 把当前作品移入指定收藏夹。 */
+    fun moveToFolder(folderId: String) {
+        _state.update { it.copy(folderPickerVisible = false) }
+        viewModelScope.launch {
+            val result = runCatching { repo.editFavoriteFolder("move", folderId = folderId, aid = comicId) }
+            _state.update {
+                it.copy(favoriteNotice = result.getOrNull()?.msg ?: result.exceptionOrNull()?.message)
+            }
+        }
+    }
+
     /**
      * 切换收藏。
      *
@@ -123,18 +145,28 @@ class DetailViewModel(
         _state.update { it.copy(togglingFavorite = true) }
         viewModelScope.launch {
             val result = runCatching { repo.toggleFavorite(comicId) }
+            val action = result.getOrNull()
+            val becameFavorite = when (action?.type) {
+                "remove" -> false
+                "add", "move", "edit" -> true
+                else -> _state.value.detail?.isFavorite ?: false
+            }
+            // 只有「刚收藏/移动」才引导归类；取消收藏时弹选择器毫无意义
+            val shouldOfferFolder = action != null && action.type in setOf("add", "move", "edit")
+            val folders = if (shouldOfferFolder) {
+                runCatching { repo.favorites(page = 1).folderList }.getOrDefault(emptyList())
+            } else {
+                emptyList()
+            }
+
             _state.update { prev ->
-                val action = result.getOrNull()
-                val nowFavorite = when (action?.type) {
-                    "remove" -> false
-                    "add", "move", "edit" -> true
-                    else -> prev.detail?.isFavorite ?: false
-                }
                 prev.copy(
                     togglingFavorite = false,
-                    detail = prev.detail?.copy(isFavorite = nowFavorite),
-                    favoriteNotice = action?.msg
-                        ?: result.exceptionOrNull()?.message,
+                    detail = prev.detail?.copy(isFavorite = becameFavorite),
+                    favoriteNotice = action?.msg ?: result.exceptionOrNull()?.message,
+                    // 没有收藏夹时不弹空对话框，否则用户只会看到一个「关闭」按钮
+                    folderPickerVisible = shouldOfferFolder && folders.isNotEmpty(),
+                    folders = folders,
                 )
             }
         }
@@ -234,6 +266,17 @@ fun DetailScreen(
                 onOpenTag = onOpenTag,
             )
         }
+    }
+
+    if (state.folderPickerVisible) {
+        FolderPickerDialog(
+            title = "移入收藏夹",
+            folders = state.folders,
+            onDismiss = { vm.dismissFolderPicker() },
+            onPick = { folder -> vm.moveToFolder(folder.folderId) },
+            onSkip = { vm.dismissFolderPicker() },
+            skipLabel = "仅收藏，不归类",
+        )
     }
 }
 

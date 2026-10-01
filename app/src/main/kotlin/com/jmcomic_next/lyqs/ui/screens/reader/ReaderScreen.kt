@@ -5,6 +5,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -28,12 +29,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -252,18 +256,22 @@ private fun ScrollReader(payload: ReadPayload, repo: JmRepository) {
 private fun PagedReader(payload: ReadPayload, repo: JmRepository, showIndicator: Boolean) {
     val pagerState = rememberPagerState(pageCount = { payload.images.size })
 
+    // 放大后必须关掉 Pager 自身的滑动，否则「拖动查看局部」会被解释成翻页。
+    // 这是缩放手势与翻页手势唯一真正冲突的地方，用「是否处于放大状态」来仲裁。
+    var zoomed by remember { mutableStateOf(false) }
+
     Box(Modifier.fillMaxSize()) {
         HorizontalPager(
             state = pagerState,
+            userScrollEnabled = !zoomed,
             modifier = Modifier.fillMaxSize(),
         ) { pageIndex ->
-            ReaderImage(
+            ZoomableReaderImage(
                 image = payload.images[pageIndex],
                 aid = payload.id,
                 scrambleId = payload.scrambleId,
                 repo = repo,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
+                onZoomChanged = { zoomed = it },
             )
         }
 
@@ -293,6 +301,78 @@ private fun PagedReader(payload: ReadPayload, repo: JmRepository, showIndicator:
         }
     }
 }
+
+/**
+ * 可缩放的单页图片。
+ *
+ * 双指缩放、放大后单指平移、双击在「适应屏幕」与 2.5 倍之间切换。
+ * 缩放倍率限制在 1x–5x：放到 1x 以下没有阅读意义，只会露出黑边。
+ *
+ * 平移只在放大状态下生效，并且**不限制边界** —— 限制边界需要知道内容与视口的实际尺寸差，
+ * 而在 Fit 模式下图片尺寸由解码结果决定，强行钳制反而会在边缘出现「拖不动」的错觉。
+ * 双击即可回到适应屏幕，这是一个可预期的兜底。
+ *
+ * @param onZoomChanged 通知外层当前是否处于放大状态，用于仲裁翻页手势
+ */
+@Composable
+private fun ZoomableReaderImage(
+    image: ReadImage,
+    aid: Int,
+    scrambleId: Int,
+    repo: JmRepository,
+    onZoomChanged: (Boolean) -> Unit,
+) {
+    var scale by remember { mutableFloatStateOf(MIN_ZOOM) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+
+    fun applyScale(next: Float) {
+        scale = next.coerceIn(MIN_ZOOM, MAX_ZOOM)
+        if (scale <= MIN_ZOOM) offset = Offset.Zero
+        onZoomChanged(scale > MIN_ZOOM)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    applyScale(scale * zoom)
+                    if (scale > MIN_ZOOM) offset += pan
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        if (scale > MIN_ZOOM) {
+                            applyScale(MIN_ZOOM)
+                        } else {
+                            applyScale(DOUBLE_TAP_ZOOM)
+                        }
+                    },
+                )
+            },
+    ) {
+        ReaderImage(
+            image = image,
+            aid = aid,
+            scrambleId = scrambleId,
+            repo = repo,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                },
+        )
+    }
+}
+
+private const val MIN_ZOOM = 1f
+private const val MAX_ZOOM = 5f
+private const val DOUBLE_TAP_ZOOM = 2.5f
 
 /**
  * 单页图片。

@@ -3,6 +3,8 @@ package com.jmcomic_next.lyqs.ui.screens.category
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +24,7 @@ import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -76,6 +79,13 @@ data class CategoryUiState(
     val loading: Boolean = true,
     val error: String? = null,
     val categories: List<CategoryNode> = emptyList(),
+    /**
+     * 分组标签（`categories` 响应的 `blocks`）。
+     *
+     * 官方用它做「主题 A 漫 / 角色」这类标签组（`DialogModal.tsx` 里把每组的 `content`
+     * 逐个渲染成跳 `/search?filter=<tag>` 的入口），这里放在结果网格下方。
+     */
+    val blocks: List<com.jmcomic_next.lyqs.data.remote.dto.CategoryBlock> = emptyList(),
     /** 加载失败时用于兜底的标签（来自 `hot_tags`）。 */
     val fallbackTags: List<String> = emptyList(),
     val parent: CategoryNode? = null,
@@ -113,6 +123,7 @@ class CategoryViewModel(private val repo: JmRepository) : ViewModel() {
                     loading = false,
                     error = tree.exceptionOrNull()?.message,
                     categories = tree.getOrNull()?.categories.orEmpty(),
+                    blocks = tree.getOrNull()?.blocks.orEmpty(),
                     fallbackTags = tags,
                     parent = first,
                     sub = null,
@@ -285,8 +296,10 @@ fun CategoryScreen(
                     else -> CategoryGrid(
                         comics = state.comics,
                         repo = repo,
+                        blocks = state.blocks,
                         loadingMore = state.loadingMore,
                         onOpenComic = onOpenComic,
+                        onOpenTag = onOpenTag,
                         onLoadMore = { vm.loadMore() },
                     )
                 }
@@ -335,8 +348,10 @@ private fun CategoryChipRow(
 private fun CategoryGrid(
     comics: List<ListItem>,
     repo: JmRepository,
+    blocks: List<com.jmcomic_next.lyqs.data.remote.dto.CategoryBlock>,
     loadingMore: Boolean,
     onOpenComic: (String) -> Unit,
+    onOpenTag: (String) -> Unit,
     onLoadMore: () -> Unit,
 ) {
     val gridState = rememberLazyGridState()
@@ -367,6 +382,14 @@ private fun CategoryGrid(
             )
         }
 
+        // 标签组铺满整行放在结果之后：它是「换个方式浏览」的出口，
+        // 不该占据结果上方的位置，也不该与结果抢列宽
+        if (blocks.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                TagBlocks(blocks = blocks, onOpenTag = onOpenTag)
+            }
+        }
+
         item(span = { GridItemSpan(maxLineSpan) }) {
             Box(
                 modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -384,6 +407,58 @@ private fun CategoryGrid(
                         style = MaterialTheme.typography.labelSmall,
                         color = JmTheme.colors.textTertiary,
                     )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 分组标签。
+ *
+ * 用 [FlowRow] 让标签自然换行 —— 标签长度差异很大，固定列数的网格会出现
+ * 「长标签被截断、短标签留一大片空白」的问题。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TagBlocks(
+    blocks: List<com.jmcomic_next.lyqs.data.remote.dto.CategoryBlock>,
+    onOpenTag: (String) -> Unit,
+) {
+    val c = JmTheme.colors
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        blocks.forEach { block ->
+            if (block.content.isEmpty()) return@forEach
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Text(
+                    text = block.title.orEmpty(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = c.text,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                ) {
+                    block.content.forEach { tag ->
+                        Surface(
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.xs),
+                            color = c.accentSoft,
+                            onClick = { onOpenTag(tag) },
+                        ) {
+                            Text(
+                                text = tag,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = c.accent,
+                                modifier = Modifier.padding(
+                                    horizontal = Spacing.sm,
+                                    vertical = Spacing.xs,
+                                ),
+                            )
+                        }
+                    }
                 }
             }
         }

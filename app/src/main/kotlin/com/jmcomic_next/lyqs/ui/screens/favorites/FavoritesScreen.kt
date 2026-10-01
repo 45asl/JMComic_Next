@@ -17,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.DriveFileMove
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -27,8 +29,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,7 +59,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** 账号相关列表的两种形态。两者的数据形态与交互一致，因此共用一个 ViewModel。 */
+/**
+ * 账号相关列表的两种形态。
+ *
+ * 数据形态与分页方式一致（都交给同一个 `ComicList` 渲染、每页 20 条），
+ * 因此共用一个 ViewModel；差异只有接口与「收藏支持收藏夹」这一点。
+ */
 enum class AccountListKind(val title: String, val icon: ImageVector, val emptyHint: String) {
     Favorites("我的收藏", Icons.Filled.BookmarkBorder, "还没有收藏，去详情页点收藏试试"),
     History("观看历史", Icons.Filled.History, "还没有观看记录"),
@@ -72,6 +79,8 @@ data class AccountListUiState(
     val selectedFolder: String = "",
     val total: Int = 0,
     val loadingMore: Boolean = false,
+    /** 收藏夹操作的结果提示，展示一次后清除。 */
+    val notice: String? = null,
 )
 
 class AccountListViewModel(
@@ -82,13 +91,15 @@ class AccountListViewModel(
     private val _state = MutableStateFlow(AccountListUiState())
     val state: StateFlow<AccountListUiState> = _state.asStateFlow()
 
-    /** 收藏每页 20 条、历史每页 20 条，都与官方一致。 */
+    /** 收藏与历史都是每页 20 条，与官方一致。 */
     private val pageSize = 20
     private var page = 1
 
     init {
         load()
     }
+
+    fun consumeNotice() = _state.update { it.copy(notice = null) }
 
     fun load() {
         val loggedIn = repo.auth.isLoggedIn
@@ -127,17 +138,49 @@ class AccountListViewModel(
 
     fun selectFolder(folderId: String) {
         if (_state.value.selectedFolder == folderId) return
-        // 换收藏夹时先清空列表，避免旧夹的内容停留一瞬造成误读
+        // 换夹时先清空列表，避免旧夹内容停留一瞬造成误读
         _state.update { it.copy(selectedFolder = folderId, items = emptyList()) }
         load()
     }
 
+    // ------------------------------------------------------------------
+    // 收藏夹编辑
+    // ------------------------------------------------------------------
+
+    fun createFolder(name: String) = editFolder(type = FOLDER_TYPE_ADD, folderName = name)
+
+    fun renameFolder(folderId: String, name: String) =
+        editFolder(type = FOLDER_TYPE_EDIT, folderId = folderId, folderName = name)
+
+    fun deleteFolder(folderId: String) = editFolder(type = FOLDER_TYPE_DEL, folderId = folderId)
+
+    fun moveToFolder(aid: String, folderId: String) =
+        editFolder(type = FOLDER_TYPE_MOVE, folderId = folderId, aid = aid)
+
     /**
-     * 删除一条历史。
+     * 收藏夹编辑的统一出口。
      *
-     * 只有历史列表支持；收藏的移除走详情页的收藏按钮（服务端是切换式）。
-     * 本地先移除再发请求：删除是明确的用户意图，失败时用错误提示告知并把列表恢复。
+     * 四个动作（新建/改名/删除/归类）走的是同一个接口，只是 `type` 不同，
+     * 因此这里收敛成一处 —— 也保证「操作完必须刷新」这件事不会被漏掉某一个动作。
      */
+    private fun editFolder(
+        type: String,
+        folderId: String? = null,
+        folderName: String? = null,
+        aid: String? = null,
+    ) {
+        viewModelScope.launch {
+            val result = runCatching {
+                repo.editFavoriteFolder(type, folderId, folderName, aid)
+            }
+            val message = result.getOrNull()?.msg ?: result.exceptionOrNull()?.message
+            _state.update { it.copy(notice = message) }
+            // 无论是新建、改名还是归类，收藏夹与列表都可能变化，统一重拉
+            load()
+        }
+    }
+
+    /** 删除一条历史。收藏的移除走详情页的收藏按钮（服务端是切换式）。 */
     fun deleteHistory(comicId: String) {
         if (kind != AccountListKind.History) return
         val before = _state.value.items
@@ -175,13 +218,20 @@ class AccountListViewModel(
             }
         }
     }
+
+    companion object {
+        // `favorite_folder` 接口的 type 取值，官方 FolderModal 用到 add/edit/move/del
+        const val FOLDER_TYPE_ADD = "add"
+        const val FOLDER_TYPE_EDIT = "edit"
+        const val FOLDER_TYPE_DEL = "del"
+        const val FOLDER_TYPE_MOVE = "move"
+    }
 }
 
 /**
  * 我的收藏 / 观看历史。
  *
- * 两者共用一屏：数据形态、分页方式与交互完全一致，差别只有接口和「收藏有收藏夹」这一点。
- * 未登录时不请求接口，直接给出登录入口 —— 对未登录用户发一个注定失败的请求没有意义。
+ * 未登录时不请求接口，直接给出登录入口 —— 对未登录用户发一个注定 401 的请求没有意义。
  */
 @Composable
 fun AccountListScreen(
@@ -199,6 +249,17 @@ fun AccountListScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val c = JmTheme.colors
 
+    var dialog by remember { mutableStateOf<FolderDialog>(FolderDialog.None) }
+    val isFavorites = kind == AccountListKind.Favorites
+
+    // 操作结果只提示一次
+    LaunchedEffect(state.notice) {
+        if (state.notice != null) {
+            kotlinx.coroutines.delay(2500)
+            vm.consumeNotice()
+        }
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         GlassTopBar(
             title = kind.title,
@@ -212,7 +273,30 @@ fun AccountListScreen(
                     )
                 }
             },
+            actions = {
+                if (isFavorites && state.loggedIn) {
+                    IconButton(onClick = { dialog = FolderDialog.Manage }) {
+                        Icon(
+                            imageVector = Icons.Filled.Folder,
+                            contentDescription = "管理收藏夹",
+                            tint = c.accent,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+            },
         )
+
+        state.notice?.let { notice ->
+            Text(
+                text = notice,
+                style = MaterialTheme.typography.bodyMedium,
+                color = c.text,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+            )
+        }
 
         when {
             !state.loggedIn -> MessageState(
@@ -228,7 +312,7 @@ fun AccountListScreen(
                 ErrorBox(message = state.error.orEmpty(), onRetry = { vm.load() })
 
             else -> {
-                if (kind == AccountListKind.Favorites && state.folders.isNotEmpty()) {
+                if (isFavorites && state.folders.isNotEmpty()) {
                     FolderRow(
                         folders = state.folders,
                         selected = state.selectedFolder,
@@ -254,19 +338,30 @@ fun AccountListScreen(
                                     item = comic,
                                     coverUrl = repo.coverUrl(comic),
                                     onClick = { onOpenComic(comic.id) },
-                                    trailing = if (kind == AccountListKind.History) {
+                                    trailing = if (isFavorites) {
                                         {
-                                            IconButton(onClick = { vm.deleteHistory(comic.id) }) {
+                                            IconButton(
+                                                onClick = { dialog = FolderDialog.Move(comic.id) },
+                                            ) {
                                                 Icon(
-                                                    imageVector = Icons.Filled.DeleteOutline,
-                                                    contentDescription = "删除这条历史",
-                                                    tint = JmTheme.colors.textTertiary,
+                                                    imageVector = Icons.Filled.DriveFileMove,
+                                                    contentDescription = "移入收藏夹",
+                                                    tint = c.textTertiary,
                                                     modifier = Modifier.size(20.dp),
                                                 )
                                             }
                                         }
                                     } else {
-                                        null
+                                        {
+                                            IconButton(onClick = { vm.deleteHistory(comic.id) }) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.DeleteOutline,
+                                                    contentDescription = "删除这条历史",
+                                                    tint = c.textTertiary,
+                                                    modifier = Modifier.size(20.dp),
+                                                )
+                                            }
+                                        }
                                     },
                                 )
                             }
@@ -278,6 +373,58 @@ fun AccountListScreen(
                 }
             }
         }
+    }
+
+    // ---- 收藏夹相关对话框 ----
+    when (val current = dialog) {
+        FolderDialog.None -> Unit
+
+        FolderDialog.Manage -> ManageFoldersDialog(
+            folders = state.folders,
+            onDismiss = { dialog = FolderDialog.None },
+            onCreate = { dialog = FolderDialog.Create },
+            onRename = { dialog = FolderDialog.Rename(it) },
+            onDelete = { dialog = FolderDialog.Delete(it) },
+        )
+
+        FolderDialog.Create -> FolderNameDialog(
+            title = "新建收藏夹",
+            initialName = "",
+            onDismiss = { dialog = FolderDialog.None },
+            onConfirm = { name ->
+                vm.createFolder(name)
+                dialog = FolderDialog.None
+            },
+        )
+
+        is FolderDialog.Rename -> FolderNameDialog(
+            title = "重命名收藏夹",
+            initialName = current.folder.name.orEmpty(),
+            onDismiss = { dialog = FolderDialog.None },
+            onConfirm = { name ->
+                vm.renameFolder(current.folder.folderId, name)
+                dialog = FolderDialog.None
+            },
+        )
+
+        is FolderDialog.Delete -> FolderDeleteDialog(
+            folder = current.folder,
+            onDismiss = { dialog = FolderDialog.None },
+            onConfirm = {
+                vm.deleteFolder(current.folder.folderId)
+                dialog = FolderDialog.None
+            },
+        )
+
+        is FolderDialog.Move -> FolderPickerDialog(
+            title = "移入收藏夹",
+            folders = state.folders,
+            onDismiss = { dialog = FolderDialog.None },
+            onPick = { folder ->
+                vm.moveToFolder(current.comicId, folder.folderId)
+                dialog = FolderDialog.None
+            },
+        )
     }
 }
 
