@@ -123,7 +123,9 @@ Gradle 发行包由 `services.gradle.org` 重定向到 GitHub，若该网络不�
 它会让 release 包产出**空的资源表**（没有 `AndroidManifest.xml`、没有 `resources.arsc`，
 `pm install` 直接失败），而 debug 变体不走这一步，所以问题只在发布包里出现。
 
-更多构建期的实测数据、踩过的坑与验证方法，见 [`docs/engineering-notes.md`](docs/engineering-notes.md)。
+更多构建期的实测数据、踩过的坑与验证方法，见 [`docs/engineering-notes.md`](docs/engineering-notes.md)；
+`scripts/flaky_cdn_proxy.py` 是一个用来复现「API 通、图床断」这类部分故障的小工具，
+验证失败路径（图片加载失败、列表续加失败）时会用到。
 
 ## 协议说明
 
