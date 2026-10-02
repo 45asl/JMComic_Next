@@ -155,14 +155,21 @@ private fun AccountCard(
                 InfoRow("免广告特权", if (info.adFree) "已开通" else "未开通")
             }
 
+            // 四个入口**分成两行两列**，而不是挤在一行里按 weight 平分：
+            // 每行平分后每格约 160dp，足够放下图标 + 四个汉字；
+            // 一行四个的话在 360dp 宽的屏上每格只剩不到 80dp，「观看历史」会被截断。
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
                 EntryButton("我的收藏", Icons.Filled.BookmarkBorder, onOpenFavorites)
                 EntryButton("观看历史", Icons.Filled.History, onOpenHistory)
-                // 追更与标签收藏都在服务端，且都有上限（追更 500 / 标签 50），
-                // 因此放在账号卡片里与收藏、历史并列
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+            ) {
+                // 追更与标签收藏都在服务端，且都有上限（追更 500 / 标签 50）
                 EntryButton("我的追更", Icons.Filled.NotificationsNone, onOpenTracking)
                 EntryButton("标签收藏", Icons.Filled.BookmarkAdd, onOpenTags)
             }

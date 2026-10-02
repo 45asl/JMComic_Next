@@ -281,10 +281,20 @@ class DetailViewModel(
     /** 打开 / 关闭标签收藏选择器。 */
     fun setTagPicker(visible: Boolean) = _state.update { it.copy(tagPickerVisible = visible) }
 
-    /** 把选中的标签加进收藏（一次提交一串，与官方一致）。 */
-    fun favoriteTags(tags: List<String>) {
+    /**
+     * 把选中的标签加进收藏（一次提交一串，与官方一致）。
+     *
+     * 未登录时先引导登录：这个接口要凭证，直接发只会拿回 401 ——
+     * 与点赞/收藏/追更保持一致，不让用户白点一次。
+     */
+    fun favoriteTags(tags: List<String>, onNeedLogin: (String) -> Unit) {
         if (tags.isEmpty()) {
             setTagPicker(false)
+            return
+        }
+        if (!repo.auth.isLoggedIn) {
+            setTagPicker(false)
+            onNeedLogin("收藏标签需要登录")
             return
         }
         viewModelScope.launch {
@@ -604,7 +614,7 @@ fun DetailScreen(
         TagPickerDialog(
             tags = state.detail?.tags.orEmpty(),
             onDismiss = { vm.setTagPicker(false) },
-            onConfirm = { tags -> vm.favoriteTags(tags) },
+            onConfirm = { tags -> vm.favoriteTags(tags, onNeedLogin) },
         )
     }
 

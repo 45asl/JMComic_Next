@@ -371,12 +371,27 @@ data class WeekCategory(
     val label: String get() = title?.takeIf { it.isNotBlank() } ?: time.orEmpty()
 }
 
-/** 作品类型（`manga` 日漫 / `another` 其他 / `hanman` 韩漫）。 */
+/**
+ * 作品类型（`hanman` 韩漫 / `another` 其他 / `manga` 日漫）。
+ *
+ * 展示名的键名是 **`title`**，不是 `name` —— 实测原文：
+ * `"type":[{"id":"hanman","title":"韩漫"},{"id":"another","title":"其他"},{"id":"manga","title":"日漫"}]`。
+ * 按 `name` 读会全部拿到 null，界面上就只剩 `hanman` 这种原始 id
+ * （这个 bug 是在真机上看界面时发现的：单元测试按同一个错猜测写的，所以没拦住）。
+ */
 @Serializable
 data class WeekType(
     @Serializable(with = FlexString::class) val id: String = "",
+    val title: String? = null,
+    /** 兜底：服务端别处用过 `name`，留着不吃亏。 */
     val name: String? = null,
-)
+) {
+    /** 展示名，缺失时回退到 id。 */
+    val label: String
+        get() = title?.takeIf { it.isNotBlank() }
+            ?: name?.takeIf { it.isNotBlank() }
+            ?: id
+}
 
 /** 期刊内的作品列表（`week/filter` 的 `data`）：`{total, list}`，与「更多列表」同形。 */
 @Serializable

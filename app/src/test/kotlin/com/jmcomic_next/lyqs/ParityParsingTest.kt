@@ -34,13 +34,16 @@ class ParityParsingTest {
             {"categories":[
               {"id":"259","title":"","time":"2026第258期09.25 - 09.18"},
               {"id":"258","title":"","time":"2026第257期09.18 - 09.11"}],
-             "type":[{"id":"manga","name":"日漫"},{"id":"hanman","name":"韩漫"}]}
+             "type":[{"id":"hanman","title":"韩漫"},{"id":"another","title":"其他"},{"id":"manga","title":"日漫"}]}
         """.trimIndent())
         assertEquals(2, payload.categories.size)
         assertEquals("259", payload.categories.first().id)
         // title 是空串，所以 label 必须回退到 time
         assertEquals("2026第258期09.25 - 09.18", payload.categories.first().label)
-        assertEquals(listOf("manga", "hanman"), payload.type.map { it.id })
+        assertEquals(listOf("hanman", "another", "manga"), payload.type.map { it.id })
+        // 展示名的键名是 title —— 按 name 读会全变成 null，界面上只剩 hanman 这种原始 id
+        // （这个 bug 是真机上看界面时发现的）
+        assertEquals(listOf("韩漫", "其他", "日漫"), payload.type.map { it.label })
     }
 
     /** `week/filter`：`{total, list}`，元素就是普通漫画列表项。 */

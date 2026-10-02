@@ -247,7 +247,7 @@ fun WeekScreen(
                 label = "类型",
                 options = state.types,
                 selectedId = state.type?.id.orEmpty(),
-                labelOf = { it.name ?: it.id },
+                labelOf = { it.label },
                 onSelect = { vm.selectType(it) },
             )
         }
