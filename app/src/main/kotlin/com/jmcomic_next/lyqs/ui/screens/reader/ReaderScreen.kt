@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -139,20 +140,30 @@ class ReaderViewModel(
      * 只重载图片，目录保持不变 —— 一部长篇动辄几百话，重拉目录是纯浪费。
      * 同时在栈内**替换**当前话而不是导航新页面：否则连读十章会留下十层返回栈，
      * 用户按一次返回只退一话，体验很糟。
+     *
+     * **当前话只在请求成功后才推进**。先改 id 再发请求，失败时就会出现一种很难察觉的
+     * 错位：屏幕上还是上一话的图，而 `currentChapterId`、上一话/下一话按钮与进度记录
+     * 都已经指向新的一话 —— 于是再点「下一话」会直接跳过没读成的那一话，
+     * 然后把跳过的那一话记成读过的。
      */
     fun openChapter(chapterId: String) {
         if (chapterId.isBlank() || chapterId == _state.value.currentChapterId) return
-        _state.update { it.copy(currentChapterId = chapterId, switching = true, error = null) }
+        _state.update { it.copy(switching = true, error = null) }
         viewModelScope.launch {
             val chapter = runCatching { repo.read(chapterId) }
+            val payload = chapter.getOrNull()
             _state.update {
                 it.copy(
                     switching = false,
-                    payload = chapter.getOrNull() ?: it.payload,
-                    error = chapter.exceptionOrNull()?.message,
+                    currentChapterId = if (payload != null) chapterId else it.currentChapterId,
+                    payload = payload ?: it.payload,
+                    // 失败时说清楚是「换话失败」，而不是让错误文字悬在那儿不提当前是哪一话
+                    error = chapter.exceptionOrNull()
+                        ?.let { e -> "切换章节失败：${e.message ?: "未知错误"}" },
                 )
             }
-            chapter.getOrNull()?.let { recordProgress(it) }
+            // 进度按实际生效的那一话记录：失败时记的是仍然显示着的那一话
+            recordProgress(payload ?: return@launch)
         }
     }
 
@@ -191,6 +202,8 @@ class ReaderViewModel(
 fun ReaderScreen(
     comicId: String,
     chapterId: String,
+    mode: ReaderMode,
+    onModeChange: (ReaderMode) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -206,8 +219,9 @@ fun ReaderScreen(
     )
     val state by vm.state.collectAsStateWithLifecycle()
 
-    val prefs = remember(context) { AppPrefs(context) }
-    var mode by remember { mutableStateOf(prefs.readerMode) }
+    // 阅读形态由上层托管（与主题一样）。此前这里自己读了一份偏好并直接写回，
+    // 于是「我的 → 阅读形态」显示的是进阅读页之前的值，在阅读页里切了形态之后
+    // 那张卡片仍是旧选项，再点一下又会把刚做的切换覆盖掉。
     var barsVisible by remember { mutableStateOf(true) }
     var pickerOpen by remember { mutableStateOf(false) }
     val c = JmTheme.colors
@@ -242,9 +256,33 @@ fun ReaderScreen(
                                 detectTapGestures(onTap = { barsVisible = !barsVisible })
                             },
                     ) {
+                        val toggleBars = { barsVisible = !barsVisible }
                         when (mode) {
                             ReaderMode.Scroll -> ScrollReader(payload, repo)
-                            ReaderMode.Page -> PagedReader(payload, repo, barsVisible)
+                            // 翻页模式下图片自己带手势检测（缩放/双击），它会先消费掉按下事件，
+                            // 外层这个 detectTapGestures 永远等不到 onTap —— 于是「点一下收起工具栏」
+                            // 在这一模式下是死的，收起后再没有任何入口能把它调出来。
+                            // 因此把回调传进去，由图片自己的检测器负责。
+                            ReaderMode.Page -> PagedReader(payload, repo, barsVisible, toggleBars)
+                        }
+                    }
+                }
+
+                // 有内容时的错误提示（例如换话失败）：内容留在屏幕上，但必须说清楚刚才那一步没成
+                state.error?.let { message ->
+                    AnimatedVisibility(
+                        visible = barsVisible,
+                        enter = slideInVertically { -it },
+                        exit = slideOutVertically { -it },
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp),
+                    ) {
+                        GlassSurface(level = GlassLevel.Flyout, shape = RoundedCornerShape(Radius.md)) {
+                            Text(
+                                text = message,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = c.accent,
+                                modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs),
+                            )
                         }
                     }
                 }
@@ -274,12 +312,9 @@ fun ReaderScreen(
                         actions = {
                             IconButton(
                                 onClick = {
-                                    mode = if (mode == ReaderMode.Scroll) {
-                                        ReaderMode.Page
-                                    } else {
-                                        ReaderMode.Scroll
-                                    }
-                                    prefs.readerMode = mode
+                                    onModeChange(
+                                        if (mode == ReaderMode.Scroll) ReaderMode.Page else ReaderMode.Scroll
+                                    )
                                 },
                             ) {
                                 Icon(
@@ -406,7 +441,9 @@ private fun ScrollReader(payload: ReadPayload, repo: JmRepository) {
         contentPadding = PaddingValues(bottom = Spacing.xxl),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
-        items(payload.images, key = { it.image }) { image ->
+        // key 用「下标 + 地址」而不是单用地址：服务端偶尔会重复或留空 image，
+        // 单用地址会撞出重复 key 直接崩掉整个阅读页
+        itemsIndexed(payload.images, key = { i, img -> "$i-${img.image}" }) { _, image ->
             ReaderImage(
                 image = image,
                 aid = payload.id,
@@ -429,7 +466,12 @@ private fun ScrollReader(payload: ReadPayload, repo: JmRepository) {
  * Compose 的 Pager 自带相邻页预加载，无需手写预取。
  */
 @Composable
-private fun PagedReader(payload: ReadPayload, repo: JmRepository, showIndicator: Boolean) {
+private fun PagedReader(
+    payload: ReadPayload,
+    repo: JmRepository,
+    showIndicator: Boolean,
+    onTap: () -> Unit,
+) {
     val pagerState = rememberPagerState(pageCount = { payload.images.size })
 
     // 放大后必须关掉 Pager 自身的滑动，否则「拖动查看局部」会被解释成翻页。
@@ -448,6 +490,7 @@ private fun PagedReader(payload: ReadPayload, repo: JmRepository, showIndicator:
                 scrambleId = payload.scrambleId,
                 repo = repo,
                 onZoomChanged = { zoomed = it },
+                onTap = onTap,
             )
         }
 
@@ -488,6 +531,7 @@ private fun ZoomableReaderImage(
     scrambleId: Int,
     repo: JmRepository,
     onZoomChanged: (Boolean) -> Unit,
+    onTap: () -> Unit,
 ) {
     var scale by remember { mutableFloatStateOf(MIN_ZOOM) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -508,7 +552,10 @@ private fun ZoomableReaderImage(
                 }
             }
             .pointerInput(Unit) {
+                // 单击与双击都在这里处理：这一层的检测器会先消费按下事件，
+                // 外层的同名检测器拿不到任何东西（见 PagedReader 的说明）
                 detectTapGestures(
+                    onTap = { onTap() },
                     onDoubleTap = {
                         if (scale > MIN_ZOOM) applyScale(MIN_ZOOM) else applyScale(DOUBLE_TAP_ZOOM)
                     },

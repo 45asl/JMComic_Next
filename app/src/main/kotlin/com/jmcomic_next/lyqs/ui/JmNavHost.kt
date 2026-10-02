@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -41,6 +42,7 @@ import com.jmcomic_next.lyqs.ui.screens.favorites.AccountListKind
 import com.jmcomic_next.lyqs.ui.screens.favorites.AccountListScreen
 import com.jmcomic_next.lyqs.ui.screens.detail.DetailScreen
 import com.jmcomic_next.lyqs.ui.screens.home.HomeScreen
+import com.jmcomic_next.lyqs.ui.screens.more.MoreListScreen
 import com.jmcomic_next.lyqs.ui.screens.profile.ProfileScreen
 import com.jmcomic_next.lyqs.ui.screens.reader.ReaderScreen
 import com.jmcomic_next.lyqs.ui.screens.search.SearchScreen
@@ -73,8 +75,23 @@ private const val ROUTE_FAVORITES = "favorites"
 private const val ROUTE_HISTORY = "history"
 private const val ROUTE_COMMENTS = "comments/{aid}"
 
+/**
+ * 「更多」列表：首页某个推荐分区的完整列表，或连载更新表（分区 id 26）。
+ *
+ * 标题作为参数带上，避免为了显示一个标题再去请求一次 `promote`。
+ */
+private const val MORE_PATTERN = "more/{id}?title={title}"
+private const val ARG_SECTION = "id"
+private const val ARG_TITLE = "title"
+
+private fun moreFor(sectionId: String, title: String): String =
+    "more/$sectionId?title=${Uri.encode(title)}"
+
 /** 按标签打开搜索页。分类页与详情页的标签都走这里。 */
 private fun searchFor(tag: String): String = "search?$ARG_QUERY=${Uri.encode(tag)}"
+
+/** 前进入栈的统一写法：加 `launchSingleTop` 免得连点两下压出两层同样的页面。 */
+private fun NavHostController.push(route: String) = navigate(route) { launchSingleTop = true }
 
 /**
  * 应用导航图。
@@ -147,14 +164,35 @@ fun JmNavHost(
                         // 顶栏快捷切换：在浅/深之间直接切，不再回落到「跟随系统」
                         onThemeModeChange(if (isDark) ThemeMode.Light else ThemeMode.Dark)
                     },
-                    onOpenComic = { id -> nav.navigate("detail/$id") },
+                    onOpenComic = { id -> nav.push("detail/$id") },
+                    onOpenSection = { section ->
+                        nav.push(moreFor(section.id, section.title.orEmpty()))
+                    },
                 )
             }
 
             composable(MainTab.Category.route) {
                 CategoryScreen(
-                    onOpenTag = { tag -> nav.navigate(searchFor(tag)) },
-                    onOpenComic = { id -> nav.navigate("detail/$id") },
+                    onOpenTag = { tag -> nav.push(searchFor(tag)) },
+                    onOpenComic = { id -> nav.push("detail/$id") },
+                )
+            }
+
+            composable(
+                route = MORE_PATTERN,
+                arguments = listOf(
+                    navArgument(ARG_SECTION) { type = NavType.StringType },
+                    navArgument(ARG_TITLE) {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                ),
+            ) { backStack ->
+                MoreListScreen(
+                    sectionId = backStack.arguments?.getString(ARG_SECTION).orEmpty(),
+                    title = backStack.arguments?.getString(ARG_TITLE).orEmpty(),
+                    onBack = { nav.popBackStack() },
+                    onOpenComic = { id -> nav.push("detail/$id") },
                 )
             }
 
@@ -168,7 +206,7 @@ fun JmNavHost(
                 ),
             ) { backStack ->
                 SearchScreen(
-                    onOpenComic = { id -> nav.navigate("detail/$id") },
+                    onOpenComic = { id -> nav.push("detail/$id") },
                     initialQuery = backStack.arguments?.getString(ARG_QUERY).orEmpty(),
                 )
             }
@@ -181,13 +219,13 @@ fun JmNavHost(
                     onDynamicColorChange = onDynamicColorChange,
                     readerMode = readerMode,
                     onReaderModeChange = onReaderModeChange,
-                    onLogin = { nav.navigate(ROUTE_AUTH) },
+                    onLogin = { nav.push(ROUTE_AUTH) },
                     onLogout = {
                         // 登出要走接口，但本地登出不依赖它成功（见 JmRepository.logout）
                         scope.launch { repo.logout() }
                     },
-                    onOpenFavorites = { nav.navigate(ROUTE_FAVORITES) },
-                    onOpenHistory = { nav.navigate(ROUTE_HISTORY) },
+                    onOpenFavorites = { nav.push(ROUTE_FAVORITES) },
+                    onOpenHistory = { nav.push(ROUTE_HISTORY) },
                 )
             }
 
@@ -203,8 +241,8 @@ fun JmNavHost(
                 AccountListScreen(
                     kind = AccountListKind.Favorites,
                     onBack = { nav.popBackStack() },
-                    onOpenComic = { id -> nav.navigate("detail/$id") },
-                    onLogin = { nav.navigate(ROUTE_AUTH) },
+                    onOpenComic = { id -> nav.push("detail/$id") },
+                    onLogin = { nav.push(ROUTE_AUTH) },
                 )
             }
 
@@ -222,8 +260,8 @@ fun JmNavHost(
                 AccountListScreen(
                     kind = AccountListKind.History,
                     onBack = { nav.popBackStack() },
-                    onOpenComic = { id -> nav.navigate("detail/$id") },
-                    onLogin = { nav.navigate(ROUTE_AUTH) },
+                    onOpenComic = { id -> nav.push("detail/$id") },
+                    onLogin = { nav.push(ROUTE_AUTH) },
                 )
             }
 
@@ -235,12 +273,12 @@ fun JmNavHost(
                 DetailScreen(
                     comicId = id,
                     onBack = { nav.popBackStack() },
-                    onOpenComic = { next -> nav.navigate("detail/$next") },
+                    onOpenComic = { next -> nav.push("detail/$next") },
                     // 阅读页需要作品 id：它要拿系列目录来做上一话/下一话切换
-                    onReadChapter = { chapterId -> nav.navigate("read/$id/$chapterId") },
-                    onOpenTag = { tag -> nav.navigate(searchFor(tag)) },
-                    onNeedLogin = { nav.navigate(ROUTE_AUTH) },
-                    onOpenComments = { nav.navigate("comments/$id") },
+                    onReadChapter = { chapterId -> nav.push("read/$id/$chapterId") },
+                    onOpenTag = { tag -> nav.push(searchFor(tag)) },
+                    onNeedLogin = { nav.push(ROUTE_AUTH) },
+                    onOpenComments = { nav.push("comments/$id") },
                 )
             }
 
@@ -254,6 +292,9 @@ fun JmNavHost(
                 ReaderScreen(
                     comicId = backStack.arguments?.getString("comicId").orEmpty(),
                     chapterId = backStack.arguments?.getString("chapterId").orEmpty(),
+                    // 形态由上层托管：阅读页里切换会同时更新「我的」页的显示（见 ReaderScreen）
+                    mode = readerMode,
+                    onModeChange = onReaderModeChange,
                     onBack = { nav.popBackStack() },
                 )
             }

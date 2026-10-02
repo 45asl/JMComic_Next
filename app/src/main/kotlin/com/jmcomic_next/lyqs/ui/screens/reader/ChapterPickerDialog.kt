@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -66,8 +66,11 @@ fun ChapterPickerDialog(
         onDismissRequest = onDismiss,
         title = { Text("选择章节") },
         text = {
+            // 滚动状态按页码取，而不是整屏共用一个：`rememberScrollState()` 会在
+            // 翻页后继续沿用上一页的偏移，新一页一打开就停在底部，看起来像「这页内容缺了一半」
+            val scroll = remember(safePage) { ScrollState(0) }
             Column(
-                modifier = Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
+                modifier = Modifier.heightIn(max = 380.dp).verticalScroll(scroll),
                 verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
             ) {
                 slice.forEachIndexed { index, chapter ->

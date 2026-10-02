@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 /**
  * 主机清单的响应结构。
@@ -62,12 +63,27 @@ object JmHostDiscovery {
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
+     * 主机发现**专用的**客户端。
+     *
+     * 不复用业务客户端：那个客户端的拦截器会给请求装上 `Token` / `Authorization: Bearer <JWT>`，
+     * 而这里是向第三方对象存储（BytePlus）要一份主机清单 —— 把自己的登录凭证送给一个
+     * 与业务无关的第三方，只为了拿一份公开的域名列表，是不必要的暴露。
+     * 这个客户端没有任何拦截器，也就不会带上任何凭证。
+     */
+    private val client: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
+
+    /**
      * @return 选中的 API 主机（含尾斜杠），全部入口失败时返回 null。
      * @param pick 从候选主机里挑一个。默认随机 —— 源码用 Fisher–Yates 洗牌后取第一个，
      *   目的是把流量摊到多个域名上。测试时可注入确定性实现。
      */
     suspend fun discover(
-        client: OkHttpClient,
         session: JmSession,
         pick: (List<String>) -> String? = { it.randomOrNull() },
     ): String? = withContext(Dispatchers.IO) {
@@ -85,7 +101,7 @@ object JmHostDiscovery {
             val host = pick(payload.servers) ?: continue
             // 服务端给出的主机本身可能已带 scheme，两种形态都要能吃下
             val base = if (host.startsWith("http")) host.trimEnd('/') + "/" else "https://$host/"
-            session.apiBaseUrl = base
+            session.useHost(base)
             return@withContext base
         }
         return@withContext null

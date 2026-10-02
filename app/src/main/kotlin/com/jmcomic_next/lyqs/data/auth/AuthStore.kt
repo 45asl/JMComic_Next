@@ -28,6 +28,16 @@ data class AuthState(
 
 class AuthStore(context: Context, private val secure: SecureStore = SecureStore(context)) {
 
+    /**
+     * 缓存与锁。
+     *
+     * 这两件事必须在**多个线程**之间成立：读 token 的是 OkHttp 的请求线程（拦截器每发一个
+     * 请求就要取一次），写它的是界面线程（登录/登出）或请求线程（401 时清会话）。
+     * 普通字段在这里会漏：一个刚登录的请求可能读到 `null`（于是没带 Authorization），
+     * 或 `ensureLoaded` 被两个线程同时跑一遍。用一把最简的锁把「读-改-写」圈起来，
+     * 而不是引入更复杂的机制 —— 这里的临界区只有赋值与一次加解密。
+     */
+    private val lock = Any()
     private var cachedToken: String? = null
     private var cachedMember: MemberInfo? = null
     private var loaded = false
@@ -48,22 +58,20 @@ class AuthStore(context: Context, private val secure: SecureStore = SecureStore(
     }
 
     /** 当前 JWT。为空即未登录。 */
-    val token: String?
-        get() {
-            ensureLoaded()
-            return cachedToken
-        }
+    val token: String? get() = synchronized(lock) {
+        ensureLoadedLocked()
+        cachedToken
+    }
 
-    val member: MemberInfo?
-        get() {
-            ensureLoaded()
-            return cachedMember
-        }
+    val member: MemberInfo? get() = synchronized(lock) {
+        ensureLoadedLocked()
+        cachedMember
+    }
 
     val isLoggedIn: Boolean get() = !token.isNullOrBlank()
 
     /** 登录/注册成功后保存会话。 */
-    fun save(token: String, member: MemberInfo?) {
+    fun save(token: String, member: MemberInfo?) = synchronized(lock) {
         cachedToken = token
         cachedMember = member
         loaded = true
@@ -73,7 +81,7 @@ class AuthStore(context: Context, private val secure: SecureStore = SecureStore(
     }
 
     /** 更新会员信息（例如刷新后拿到的余额/等级），不动 token。 */
-    fun updateMember(member: MemberInfo?) {
+    fun updateMember(member: MemberInfo?) = synchronized(lock) {
         cachedMember = member
         secure.put(KEY_MEMBER, member?.let { JmJson.encodeToString(MemberInfo.serializer(), it) })
         publish()
@@ -85,7 +93,7 @@ class AuthStore(context: Context, private val secure: SecureStore = SecureStore(
      * 先清内存再清磁盘：即使磁盘清理失败，本次进程内也已经是未登录状态，
      * 不会出现「界面说登出了但请求仍带着旧 token」这种最糟的中间态。
      */
-    fun clear() {
+    fun clear() = synchronized(lock) {
         cachedToken = null
         cachedMember = null
         loaded = true
@@ -94,7 +102,8 @@ class AuthStore(context: Context, private val secure: SecureStore = SecureStore(
         publish()
     }
 
-    private fun ensureLoaded() {
+    /** 首次访问时从加密存储读一次。调用方必须已持有 [lock]。 */
+    private fun ensureLoadedLocked() {
         if (loaded) return
         loaded = true
         cachedToken = secure.get(KEY_TOKEN)

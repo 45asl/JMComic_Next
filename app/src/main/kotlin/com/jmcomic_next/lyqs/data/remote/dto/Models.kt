@@ -325,5 +325,11 @@ data class ForumPayload(
     val list: List<CommentItem> = emptyList(),
     @Serializable(with = FlexStringOrNull::class) val total: String? = null,
 ) {
-    val totalCount: Int get() = total?.toIntOrNull() ?: list.size
+    /**
+     * 总条数，未知时为 0。
+     *
+     * 不用 `list.size` 兜底：分页判断是 `已加载数 >= total`，
+     * 而「本页条数 == 总数」在第一页永远成立 —— 那会让评论**永远停在第一页**。
+     */
+    val totalCount: Int get() = total?.toIntOrNull() ?: 0
 }

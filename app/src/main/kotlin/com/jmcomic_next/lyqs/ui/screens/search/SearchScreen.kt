@@ -58,6 +58,7 @@ import com.jmcomic_next.lyqs.ui.LocalRepository
 import com.jmcomic_next.lyqs.ui.components.ComicRow
 import com.jmcomic_next.lyqs.ui.components.ErrorBox
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
+import com.jmcomic_next.lyqs.ui.components.LoadMoreFooter
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.components.MessageState
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
@@ -83,9 +84,15 @@ data class SearchUiState(
     val hotTags: List<String> = emptyList(),
     /** 本地搜索历史，最近的在前。 */
     val history: List<String> = emptyList(),
-    /** 结果总数（服务端以字符串下发）。 */
+    /** 结果总数（服务端以字符串下发）。0 表示服务端没给。 */
     val total: Int = 0,
     val loadingMore: Boolean = false,
+    /** 续加失败的原因。与 [error] 分开：失败若写进 [error]，页脚会反复自动重试。 */
+    val loadMoreError: String? = null,
+    /** 已经到底。 */
+    val exhausted: Boolean = false,
+    /** 空关键词被提交时给一句提示，而不是什么都不做。 */
+    val hint: String? = null,
 )
 
 class SearchViewModel(
@@ -134,14 +141,28 @@ class SearchViewModel(
     fun search() {
         val s = _state.value
         val q = s.query.trim()
-        if (q.isEmpty() || s.loading) return
+        if (s.loading) return
+        if (q.isEmpty()) {
+            // 点搜索图标而输入框是空的：什么都不发生会让人以为按钮坏了
+            _state.update { it.copy(hint = "请输入关键词") }
+            return
+        }
         val f = s.filters
 
         // 记历史放在发起请求之前：用户按下搜索就代表这次检索意图成立，
         // 哪怕请求失败，这个词也仍然是他想搜的
         prefs.addSearchHistory(q)
         page = 1
-        _state.update { it.copy(loading = true, error = null, history = prefs.searchHistory) }
+        _state.update {
+            it.copy(
+                loading = true,
+                error = null,
+                hint = null,
+                loadMoreError = null,
+                exhausted = false,
+                history = prefs.searchHistory,
+            )
+        }
 
         viewModelScope.launch {
             val result = runCatching {
@@ -185,10 +206,14 @@ class SearchViewModel(
         val q = s.query.trim()
         if (q.isEmpty() || s.loading || s.loadingMore) return
         if (s.results.isEmpty() || s.redirectAid != null) return
-        if (s.total > 0 && s.results.size >= s.total) return
+        if (s.exhausted || s.loadMoreError != null) return
+        if (s.total > 0 && s.results.size >= s.total) {
+            _state.update { it.copy(exhausted = true) }
+            return
+        }
 
         val f = s.filters
-        _state.update { it.copy(loadingMore = true) }
+        _state.update { it.copy(loadingMore = true, loadMoreError = null) }
         viewModelScope.launch {
             val next = page + 1
             val result = runCatching {
@@ -213,10 +238,18 @@ class SearchViewModel(
                     loadingMore = false,
                     results = merged,
                     total = result.getOrNull()?.page?.total ?: prev.total,
-                    error = if (ok) prev.error else result.exceptionOrNull()?.message,
+                    loadMoreError = if (ok) null else result.exceptionOrNull()?.message,
+                    // 成功但本页为空 = 到底了
+                    exhausted = ok && more.isEmpty(),
                 )
             }
         }
+    }
+
+    /** 续加失败后的重试：先清错误，否则 [loadMore] 会立刻早退。 */
+    fun retryLoadMore() {
+        _state.update { it.copy(loadMoreError = null) }
+        loadMore()
     }
 }
 
@@ -241,6 +274,15 @@ fun SearchScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf(initialQuery) }
     var showDateFilter by rememberSaveable { mutableStateOf(false) }
+    /**
+     * 带标签进来时自动搜过没有。
+     *
+     * 只用 `LaunchedEffect(initialQuery)` 是不够的：参数在同一个返回栈条目上永不变化，
+     * 但**每次重新进入组合都会再跑一次**（从详情页返回就是这种情况）。
+     * 那会拿最初的标签覆盖用户后来自己输入的关键词，于是输入框显示的是新词、
+     * 列表显示的是旧标签的结果 —— 而且用户完全看不出为什么。
+     */
+    var autoSearched by rememberSaveable { mutableStateOf(false) }
     val c = JmTheme.colors
 
     // 命中「按编号精确检索」时直接打开作品，不展示列表
@@ -251,9 +293,10 @@ fun SearchScreen(
         }
     }
 
-    // 从分类页带着标签进来时直接开搜，省掉一次手动确认
-    LaunchedEffect(initialQuery) {
-        if (initialQuery.isNotBlank()) {
+    // 从分类页带着标签进来时直接开搜，省掉一次手动确认（只做一次，见 autoSearched）
+    LaunchedEffect(initialQuery, autoSearched) {
+        if (!autoSearched && initialQuery.isNotBlank()) {
+            autoSearched = true
             vm.onQueryChange(initialQuery)
             vm.search()
         }
@@ -279,6 +322,15 @@ fun SearchScreen(
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { vm.search() }),
         )
+
+        state.hint?.let { hint ->
+            Text(
+                text = hint,
+                style = MaterialTheme.typography.labelSmall,
+                color = c.accent,
+                modifier = Modifier.padding(horizontal = Spacing.lg),
+            )
+        }
 
         FilterRow(
             label = "排序",
@@ -375,29 +427,13 @@ fun SearchScreen(
                     }
                 }
                 item(key = "footer") {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (state.loadingMore) {
-                            CircularProgressIndicator(
-                                color = c.accent,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(22.dp),
-                            )
-                        } else {
-                            LaunchedEffect(state.results.size) { vm.loadMore() }
-                            Text(
-                                text = if (state.total > 0 && state.results.size >= state.total) {
-                                    "已经到底了"
-                                } else {
-                                    "上滑加载更多"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = c.textTertiary,
-                            )
-                        }
-                    }
+                    LoadMoreFooter(
+                        loading = state.loadingMore,
+                        error = state.loadMoreError,
+                        exhausted = state.exhausted,
+                        onLoadMore = { vm.loadMore() },
+                        onRetry = { vm.retryLoadMore() },
+                    )
                 }
             }
         }

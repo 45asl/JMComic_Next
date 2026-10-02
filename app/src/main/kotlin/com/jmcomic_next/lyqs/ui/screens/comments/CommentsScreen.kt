@@ -46,6 +46,7 @@ import com.jmcomic_next.lyqs.ui.components.ErrorBox
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
+import com.jmcomic_next.lyqs.ui.components.LoadMoreFooter
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.components.MessageState
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
@@ -62,6 +63,10 @@ data class CommentsUiState(
     val comments: List<CommentItem> = emptyList(),
     val total: Int = 0,
     val loadingMore: Boolean = false,
+    /** 续加失败的原因。不能与 [error] 混用：页脚会在失败后重新进入组合并再次自动触发。 */
+    val loadMoreError: String? = null,
+    /** 已经到底。 */
+    val exhausted: Boolean = false,
 )
 
 class CommentsViewModel(
@@ -106,9 +111,13 @@ class CommentsViewModel(
     fun loadMore() {
         val s = _state.value
         if (s.loading || s.loadingMore || s.comments.isEmpty()) return
-        if (s.total > 0 && s.comments.size >= s.total) return
+        if (s.exhausted || s.loadMoreError != null) return
+        if (s.total > 0 && s.comments.size >= s.total) {
+            _state.update { it.copy(exhausted = true) }
+            return
+        }
 
-        _state.update { it.copy(loadingMore = true) }
+        _state.update { it.copy(loadingMore = true, loadMoreError = null) }
         viewModelScope.launch {
             val next = page + 1
             val result = runCatching { repo.comments(comicId, page = next) }
@@ -118,10 +127,19 @@ class CommentsViewModel(
                 prev.copy(
                     loadingMore = false,
                     comments = if (result.isSuccess) prev.comments + more else prev.comments,
-                    total = result.getOrNull()?.totalCount ?: prev.total,
+                    total = result.getOrNull()?.totalCount?.takeIf { it > 0 } ?: prev.total,
+                    loadMoreError = if (result.isSuccess) null else result.exceptionOrNull()?.message,
+                    // 成功但本页为空 = 到底了（服务端不给 total 时的唯一终点信号）
+                    exhausted = result.isSuccess && more.isEmpty(),
                 )
             }
         }
+    }
+
+    /** 续加失败后的重试：先清错误，否则 [loadMore] 会立刻早退。 */
+    fun retryLoadMore() {
+        _state.update { it.copy(loadMoreError = null) }
+        loadMore()
     }
 }
 
@@ -184,29 +202,13 @@ fun CommentsScreen(
                     CommentCard(comment, repo)
                 }
                 item(key = "footer") {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (state.loadingMore) {
-                            CircularProgressIndicator(
-                                color = c.accent,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(22.dp),
-                            )
-                        } else {
-                            LaunchedEffect(state.comments.size) { vm.loadMore() }
-                            Text(
-                                text = if (state.total > 0 && state.comments.size >= state.total) {
-                                    "已经到底了"
-                                } else {
-                                    "上滑加载更多"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = c.textTertiary,
-                            )
-                        }
-                    }
+                    LoadMoreFooter(
+                        loading = state.loadingMore,
+                        error = state.loadMoreError,
+                        exhausted = state.exhausted,
+                        onLoadMore = { vm.loadMore() },
+                        onRetry = { vm.retryLoadMore() },
+                    )
                 }
             }
         }

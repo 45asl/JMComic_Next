@@ -82,7 +82,14 @@ data class FavoriteListPayload(
     @Serializable(with = FlexStringOrNull::class) val total: String? = null,
     @Serializable(with = FlexStringOrNull::class) val count: String? = null,
 ) {
-    val totalCount: Int get() = total?.toIntOrNull() ?: list.size
+    /**
+     * 总条数。**服务端不给时是 0（未知），不是 `list.size`。**
+     *
+     * 用「本页条数」冒充总数会带来一个很难察觉的后果：分页判断写成
+     * `items.size >= total` 时，第一页刚好「等于总数」，于是**永远停在第一页**，
+     * 界面还会理直气壮地显示「共 20 项」。未知就让它表现为未知。
+     */
+    val totalCount: Int get() = total?.toIntOrNull() ?: count?.toIntOrNull() ?: 0
 }
 
 /** 观看历史（`watch_list` 接口 GET）。 */
@@ -91,5 +98,6 @@ data class HistoryPayload(
     val list: List<ListItem> = emptyList(),
     @Serializable(with = FlexStringOrNull::class) val total: String? = null,
 ) {
-    val totalCount: Int get() = total?.toIntOrNull() ?: list.size
+    /** 同 [FavoriteListPayload.totalCount]：未知记 0，不用本页条数冒充总数。 */
+    val totalCount: Int get() = total?.toIntOrNull() ?: 0
 }

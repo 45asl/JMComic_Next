@@ -27,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.ui.LocalRepository
+import com.jmcomic_next.lyqs.ui.toUserMessage
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
@@ -144,11 +146,13 @@ class AuthViewModel(private val repo: JmRepository) : ViewModel() {
         _state.update { it.copy(submitting = true, error = null, notice = null) }
         viewModelScope.launch {
             val result = runCatching { block() }
-            _state.update {
-                it.copy(
-                    submitting = false,
-                    error = result.exceptionOrNull()?.message,
-                )
+            _state.update { prev ->
+                // 只有**抛异常**才算这次提交失败。注册/忘记密码这两个接口的失败
+                // 是「HTTP 成功但业务失败」，错误由 block 内部写进 state.error，
+                // 若无条件用 exceptionOrNull() 覆盖，就会把它清回 null ——
+                // 表现出来是「按钮转一下，然后什么都没有」。
+                val thrown = result.exceptionOrNull()?.toUserMessage()
+                prev.copy(submitting = false, error = thrown ?: prev.error)
             }
         }
     }
@@ -174,11 +178,15 @@ fun AuthScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val c = JmTheme.colors
 
-    var username by remember { mutableStateOf("") }
+    // 用户名/邮箱/性别用 rememberSaveable：注册表单填到一半转屏不该被清空
+    // （它们会被写进 saved instance state，页面被回收后也能恢复）。
+    // **密码刻意用 remember**：saved instance state 会进 Bundle，
+    // 而 Bundle 在进程被回收时可能落盘；明文口令不值得为了转屏便利付出这个代价。
+    var username by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordConfirm by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var gender by remember { mutableStateOf("m") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var gender by rememberSaveable { mutableStateOf("m") }
 
     // 登录成功即回退到调用方（详情页/我的页），由它自行刷新
     LaunchedEffect(state.loggedIn) {

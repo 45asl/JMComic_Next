@@ -46,6 +46,22 @@ class JmSession(
     @Volatile
     var apiBaseUrl: String? = null
 
+    /**
+     * 当前主机是否「可疑」——出现了网络类失败（连接不上/超时/DNS）。
+     *
+     * 主机是从服务端下发的清单里**随机**挑的，挑中一个已失效的域名完全可能。
+     * 若选中的主机一成不变地用到进程结束，用户遇到的就是「怎么刷新都没用」。
+     * 标记之后由 [com.jmcomic_next.lyqs.data.JmRepository.bootstrap] 重新发现并换一台。
+     */
+    @Volatile
+    var hostSuspect: Boolean = false
+
+    /** 主机发现成功：写入新主机并清掉可疑标记。 */
+    fun useHost(base: String) {
+        apiBaseUrl = base
+        hostSuspect = false
+    }
+
     /** 图床主机，来自 `setting` 接口。为空时业务层应回退到 [apiBaseUrl]。 */
     @Volatile
     var imageHost: String? = null

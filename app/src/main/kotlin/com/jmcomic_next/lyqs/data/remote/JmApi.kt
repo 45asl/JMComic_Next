@@ -1,7 +1,9 @@
 package com.jmcomic_next.lyqs.data.remote
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import retrofit2.Response
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.FieldMap
@@ -15,16 +17,26 @@ import retrofit2.http.Url
  * `data` 之所以声明成 [JsonElement]，是因为它有两种形态：
  *
  *  - **字符串** —— 密文，需用会话 Token 做 AES-256-ECB 解密后再解析（绝大多数业务接口）
- *  - **对象/数组** —— 明文，直接用（少数接口以及本地调试时会遇到）
+ *  - **对象/数组** —— 明文，直接用（失败响应以及少数接口会这样回）
  *
  * 解析与解密的分派见 [JmRemote.resolvePayload]。
+ *
+ * **两个消息字段都要接**：实测失败响应长这样
+ * `{"code":401,"data":[],"errorMsg":"无效的用户名和\/或密码!"}` —— 是 `errorMsg`；
+ * 而 `msg` 出现在别处（如业务结果里的嵌套封套）。只声明 `msg` 会让所有服务端提示静默丢失，
+ * 用户看到的就只剩客户端自己编的那句话。
  */
 @Serializable
 data class Envelope(
     val code: Int = -1,
     val msg: String? = null,
+    @SerialName("errorMsg") val errorMsg: String? = null,
     val data: JsonElement? = null,
-)
+) {
+    /** 服务端给出的可读提示，优先 `errorMsg`。 */
+    val message: String? get() = errorMsg?.takeIf { it.isNotBlank() }
+        ?: msg?.takeIf { it.isNotBlank() }
+}
 
 /**
  * 所有请求都通过 [Url] 传入完整地址。
@@ -32,6 +44,11 @@ data class Envelope(
  * 原因是 API 主机是运行时由主机发现决定的，还会在多个域名间切换；
  * 而 Retrofit 的 `baseUrl` 在构建期固定，改它就得重建整个 Retrofit 实例。
  * 用 [Url] 传全量地址可以完全绕开这个问题。
+ *
+ * 返回 [Response] 而不是裸的 [Envelope]，是为了**在非 2xx 时也能读到服务端的说明**：
+ * 这个服务端把业务失败放在 401 + `{"code":401,"errorMsg":"…"}` 里（例如密码错误），
+ * 若交给 Retrofit 抛 `HttpException`，那段 `errorMsg` 就随着响应体一起被丢掉了，
+ * 上层只能自己编一句「没有访问权限」—— 用户输了错密码却看到权限问题。
  */
 interface JmApi {
 
@@ -39,7 +56,7 @@ interface JmApi {
     suspend fun get(
         @Url url: String,
         @QueryMap(encoded = true) params: Map<String, String> = emptyMap(),
-    ): Envelope
+    ): Response<Envelope>
 
     /**
      * POST 一律走**表单体**（`application/x-www-form-urlencoded`）。
@@ -53,7 +70,7 @@ interface JmApi {
     suspend fun post(
         @Url url: String,
         @FieldMap params: Map<String, String> = emptyMap(),
-    ): Envelope
+    ): Response<Envelope>
 }
 
 /** 业务层异常。带上面向用户的中文说明，避免把 OkHttp/Retrofit 的堆栈直接抛到 UI。 */

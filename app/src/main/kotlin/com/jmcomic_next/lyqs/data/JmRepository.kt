@@ -19,6 +19,7 @@ import com.jmcomic_next.lyqs.data.remote.dto.CategoriesPayload
 import com.jmcomic_next.lyqs.data.remote.dto.CategoryFilterPayload
 import com.jmcomic_next.lyqs.data.remote.dto.JmSettings
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
+import com.jmcomic_next.lyqs.data.remote.dto.MoreListPayload
 import com.jmcomic_next.lyqs.data.remote.dto.PagedList
 import com.jmcomic_next.lyqs.data.remote.dto.PromoteSection
 import com.jmcomic_next.lyqs.data.remote.dto.ReadPayload
@@ -81,14 +82,22 @@ class JmRepository(
     /**
      * 引导：发现主机 → 取配置。
      *
-     * @return 是否就绪。已在会话内成功引导过则直接返回 true。
+     * 三条重入规则，都是为了让一次失败不至于毁掉整个进程：
+     *  - 还没主机 → 必须发现
+     *  - 主机被标记为可疑（上一次请求是网络类失败）→ 重新发现并换一台，
+     *    否则随机挑中的那个死域名会被一直用到进程结束
+     *  - 图床主机还没拿到 → 重试 `setting`（它失败过一次就再没机会补齐，
+     *    后果是所有封面与头像在整个会话里都加载不出来）
+     *
+     * @return 是否就绪。已在会话内成功引导过且无需重试时直接返回 true。
      * @throws JmException 主机发现全部失败时
      */
     suspend fun bootstrap(): Boolean = bootstrapLock.withLock {
-        if (bootstrapped && session.isReady) return@withLock true
+        val ready = bootstrapped && session.isReady && !session.hostSuspect
+        if (ready && session.imageHost != null) return@withLock true
 
-        if (!session.isReady) {
-            val host = JmHostDiscovery.discover(remote.okHttp, session)
+        if (!ready) {
+            val host = JmHostDiscovery.discover(session)
                 ?: throw JmException(
                     "无法连接到服务端：主机发现全部失败",
                     JmException.Kind.Network,
@@ -224,7 +233,9 @@ class JmRepository(
         )
         val token = info.jwtToken?.takeIf { it.isNotBlank() }
             ?: throw JmException("登录成功但服务端未返回凭证", JmException.Kind.Parse)
-        authStore.save(token, info)
+        // 落盘要走 IO：凭证是经 Android Keystore 加密的，加解密 + 写 SharedPreferences
+        // 放在主线程上做，是一次实实在在的卡顿（登录成功后界面正要切换）
+        withContext(Dispatchers.IO) { authStore.save(token, info) }
         return info
     }
 
@@ -268,7 +279,7 @@ class JmRepository(
      */
     suspend fun logout() {
         runCatching { remote.post(JmPaths.LOGOUT, ActionResult.serializer()) }
-        authStore.clear()
+        withContext(Dispatchers.IO) { authStore.clear() }
     }
 
     // ------------------------------------------------------------------
@@ -412,6 +423,43 @@ class JmRepository(
         return PagedList(payload.content, payload.total?.toIntOrNull() ?: 0)
     }
 
+    /**
+     * 首页某个推荐分区的完整列表（「更多」）。
+     *
+     * @param page **0 起算**（与 `latest` 一致，服务端约定），官网源码里
+     *   `Comic.tsx` 也明确写着「page 是 0-indexed（第一頁是 0）」。
+     */
+    suspend fun promoteList(id: String, page: Int): PagedList = remote.get(
+        JmPaths.PROMOTE_LIST,
+        MoreListPayload.serializer(),
+        mapOf("id" to id, "page" to page.toString()),
+    ).let { PagedList(it.list, it.total?.toIntOrNull() ?: 0) }
+
+    /**
+     * 连载更新表（每周更新）。
+     *
+     * @param type `all` 全部 / `manga` 漫画 / `hanman` 韩漫
+     * @param date **0 完结，1..7 周一..周日**（官方 `getWeekInfo`：把 JS 的
+     *   `getDay()` 从「周日=0」换算成「周一=1」，第 8 个标签是「完结」= 0）
+     * @param page **1 起算**，与其它列表接口相反
+     *
+     * 返回的 [PagedList.total] 恒为 0 —— 这个接口不给总数（见 [JmPaths.SERIALIZATION]），
+     * 调用方只能靠「本页是否为空」判断到底。
+     */
+    suspend fun weeklyUpdate(
+        type: String = WEEKLY_TYPE_ALL,
+        date: Int,
+        page: Int,
+    ): PagedList = remote.get(
+        JmPaths.SERIALIZATION,
+        MoreListPayload.serializer(),
+        mapOf(
+            "type" to type,
+            "date" to date.toString(),
+            "page" to page.toString(),
+        ),
+    ).let { PagedList(it.list, total = 0) }
+
     /** 漫画详情。 */
     suspend fun album(id: String): AlbumDetail = remote.get(
         JmPaths.ALBUM,
@@ -482,6 +530,20 @@ class JmRepository(
     companion object {
         /** 收藏列表的默认排序，官方 `defaultEditInitialState` 里是 `mr`。 */
         const val DEFAULT_FAVORITE_ORDER = "mr"
+
+        /**
+         * 首页推荐分区里「连载更新」那一块的固定 id。
+         *
+         * 官方 `Comic.tsx` 用 `queryId === "26"` 判定「这个分区要按每周更新表来渲染」
+         * （实测该分区标题是「连载更新→右滑看更多→」）。这个 id 是服务端约定，
+         * 推导不出来，因此显式命名。
+         */
+        const val WEEKLY_SECTION_ID = "26"
+
+        /** 连载更新表 `type` 参数的三个取值（官方 `ComicType`）。 */
+        const val WEEKLY_TYPE_ALL = "all"
+        const val WEEKLY_TYPE_MANGA = "manga"
+        const val WEEKLY_TYPE_HANMAN = "hanman"
 
         /** 便捷构造，供 App 级容器使用。 */
         fun create(

@@ -50,6 +50,7 @@ import com.jmcomic_next.lyqs.ui.components.ErrorBox
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
+import com.jmcomic_next.lyqs.ui.components.LoadMoreFooter
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.components.MessageState
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
@@ -96,6 +97,10 @@ data class CategoryUiState(
     val comics: List<ListItem> = emptyList(),
     val loadingMore: Boolean = false,
     val total: Int = 0,
+    /** 续加失败的原因（与 [listError] 分开，见 loadMore）。 */
+    val loadMoreError: String? = null,
+    /** 已经到底。 */
+    val exhausted: Boolean = false,
 )
 
 class CategoryViewModel(private val repo: JmRepository) : ViewModel() {
@@ -145,6 +150,12 @@ class CategoryViewModel(private val repo: JmRepository) : ViewModel() {
         loadList()
     }
 
+    /** 续加失败后的重试：先清错误，否则 [loadMore] 会立刻早退。 */
+    fun retryLoadMore() {
+        _state.update { it.copy(loadMoreError = null) }
+        loadMore()
+    }
+
     fun setSort(sort: CategorySort) {
         if (_state.value.sort == sort) return
         _state.update { it.copy(sort = sort) }
@@ -167,7 +178,9 @@ class CategoryViewModel(private val repo: JmRepository) : ViewModel() {
         if (_state.value.parent == null) return
         val key = filterKey()
         page = 1
-        _state.update { it.copy(loadingList = true, listError = null) }
+        _state.update {
+            it.copy(loadingList = true, listError = null, loadMoreError = null, exhausted = false)
+        }
         viewModelScope.launch {
             val result = runCatching {
                 repo.categoryFilter(key, page = 1, order = _state.value.sort.key)
@@ -186,10 +199,14 @@ class CategoryViewModel(private val repo: JmRepository) : ViewModel() {
     fun loadMore() {
         val s = _state.value
         if (s.parent == null || s.loadingList || s.loadingMore || s.comics.isEmpty()) return
+        if (s.exhausted || s.loadMoreError != null) return
         val key = filterKey()
-        if (s.total > 0 && s.comics.size >= s.total) return
+        if (s.total > 0 && s.comics.size >= s.total) {
+            _state.update { it.copy(exhausted = true) }
+            return
+        }
 
-        _state.update { it.copy(loadingMore = true) }
+        _state.update { it.copy(loadingMore = true, loadMoreError = null) }
         viewModelScope.launch {
             val next = page + 1
             val result = runCatching {
@@ -202,6 +219,8 @@ class CategoryViewModel(private val repo: JmRepository) : ViewModel() {
                     loadingMore = false,
                     comics = if (result.isSuccess) prev.comics + more else prev.comics,
                     total = result.getOrNull()?.total ?: prev.total,
+                    loadMoreError = if (result.isSuccess) null else result.exceptionOrNull()?.message,
+                    exhausted = result.isSuccess && more.isEmpty(),
                 )
             }
         }
@@ -298,9 +317,12 @@ fun CategoryScreen(
                         repo = repo,
                         blocks = state.blocks,
                         loadingMore = state.loadingMore,
+                        loadMoreError = state.loadMoreError,
+                        exhausted = state.exhausted,
                         onOpenComic = onOpenComic,
                         onOpenTag = onOpenTag,
                         onLoadMore = { vm.loadMore() },
+                        onRetryLoadMore = { vm.retryLoadMore() },
                     )
                 }
             }
@@ -350,9 +372,12 @@ private fun CategoryGrid(
     repo: JmRepository,
     blocks: List<com.jmcomic_next.lyqs.data.remote.dto.CategoryBlock>,
     loadingMore: Boolean,
+    loadMoreError: String?,
+    exhausted: Boolean,
     onOpenComic: (String) -> Unit,
     onOpenTag: (String) -> Unit,
     onLoadMore: () -> Unit,
+    onRetryLoadMore: () -> Unit,
 ) {
     val gridState = rememberLazyGridState()
     val atBottom by remember {
@@ -391,24 +416,13 @@ private fun CategoryGrid(
         }
 
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (loadingMore) {
-                    CircularProgressIndicator(
-                        color = JmTheme.colors.accent,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(22.dp),
-                    )
-                } else {
-                    Text(
-                        text = "上滑加载更多",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = JmTheme.colors.textTertiary,
-                    )
-                }
-            }
+            LoadMoreFooter(
+                loading = loadingMore,
+                error = loadMoreError,
+                exhausted = exhausted,
+                onLoadMore = onLoadMore,
+                onRetry = onRetryLoadMore,
+            )
         }
     }
 }

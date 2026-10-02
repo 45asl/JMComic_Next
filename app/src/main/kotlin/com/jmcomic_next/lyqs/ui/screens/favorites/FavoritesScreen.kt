@@ -51,6 +51,7 @@ import com.jmcomic_next.lyqs.ui.LocalRepository
 import com.jmcomic_next.lyqs.ui.components.ComicRow
 import com.jmcomic_next.lyqs.ui.components.ErrorBox
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
+import com.jmcomic_next.lyqs.ui.components.LoadMoreFooter
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.components.MessageState
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
@@ -81,6 +82,10 @@ data class AccountListUiState(
     val selectedFolder: String = "",
     val total: Int = 0,
     val loadingMore: Boolean = false,
+    /** 续加失败的原因。与 [error] 分开：见 [AccountListViewModel.loadMore]。 */
+    val loadMoreError: String? = null,
+    /** 已经到底（服务端给出 total 时按总数判断，否则以「本页为空」为准）。 */
+    val exhausted: Boolean = false,
     /** 收藏夹操作的结果提示，展示一次后清除。 */
     val notice: String? = null,
 )
@@ -90,7 +95,8 @@ class AccountListViewModel(
     private val kind: AccountListKind,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(AccountListUiState())
+    // 登录态用当前真实值做初值：默认值 false 会让已登录用户在首帧看到「需要登录」
+    private val _state = MutableStateFlow(AccountListUiState(loggedIn = repo.auth.isLoggedIn))
     val state: StateFlow<AccountListUiState> = _state.asStateFlow()
 
     /** 收藏与历史都是每页 20 条，与官方一致。 */
@@ -101,11 +107,27 @@ class AccountListViewModel(
     // 也会重新拉取，而不是显示进入本页那一刻的旧快照。
     fun consumeNotice() = _state.update { it.copy(notice = null) }
 
-    fun load() {
+    /**
+     * 拉取第一页。
+     *
+     * @param silent 后台刷新（页面回到前台、收藏夹编辑完）用 true：**不清空当前内容、不显示整屏转圈**。
+     *   之前每次回到本页都会把 `loading` 置真，于是列表被一个居中的转圈替换掉，
+     *   `LazyColumn` 离开组合、内部滚动状态随之注销 —— 深翻到第 60 条、进详情看一眼再返回，
+     *   就会被打回第一条。刷新是为了让数据变新，不该顺手把用户的位置也重置掉。
+     */
+    fun load(silent: Boolean = false) {
         val loggedIn = repo.auth.isLoggedIn
-        _state.update { it.copy(loading = true, error = null, loggedIn = loggedIn) }
+        val keepContent = silent && _state.value.items.isNotEmpty()
+        _state.update {
+            it.copy(
+                loading = !keepContent,
+                error = null,
+                loadMoreError = null,
+                loggedIn = loggedIn,
+            )
+        }
         if (!loggedIn) {
-            _state.update { it.copy(loading = false) }
+            _state.update { it.copy(loading = false, items = emptyList(), total = 0) }
             return
         }
 
@@ -125,11 +147,15 @@ class AccountListViewModel(
                 }
             }
             _state.update {
+                // 静默刷新失败时保留原有内容，只把错误附在状态里；
+                // 若把 items 一起清空，用户看到的就是「刷新一下什么都没了」
+                val failed = result.isFailure && it.items.isNotEmpty()
                 it.copy(
                     loading = false,
-                    items = result.getOrNull()?.first.orEmpty(),
-                    folders = result.getOrNull()?.second.orEmpty(),
-                    total = result.getOrNull()?.third ?: 0,
+                    items = if (failed) it.items else result.getOrNull()?.first.orEmpty(),
+                    folders = if (failed) it.folders else result.getOrNull()?.second.orEmpty(),
+                    total = if (failed) it.total else result.getOrNull()?.third ?: 0,
+                    exhausted = false,
                     error = result.exceptionOrNull()?.message,
                 )
             }
@@ -139,7 +165,7 @@ class AccountListViewModel(
     fun selectFolder(folderId: String) {
         if (_state.value.selectedFolder == folderId) return
         // 换夹时先清空列表，避免旧夹内容停留一瞬造成误读
-        _state.update { it.copy(selectedFolder = folderId, items = emptyList()) }
+        _state.update { it.copy(selectedFolder = folderId, items = emptyList(), exhausted = false) }
         load()
     }
 
@@ -175,8 +201,8 @@ class AccountListViewModel(
             }
             val message = result.getOrNull()?.msg ?: result.exceptionOrNull()?.message
             _state.update { it.copy(notice = message) }
-            // 无论是新建、改名还是归类，收藏夹与列表都可能变化，统一重拉
-            load()
+            // 无论是新建、改名还是归类，收藏夹与列表都可能变化，统一重拉（静默，别让列表跳回顶部）
+            load(silent = true)
         }
     }
 
@@ -187,18 +213,41 @@ class AccountListViewModel(
         _state.update { it.copy(items = it.items.filterNot { c -> c.id == comicId }) }
         viewModelScope.launch {
             val result = runCatching { repo.deleteHistory(comicId) }
-            if (result.isFailure) {
-                _state.update { it.copy(items = before, error = result.exceptionOrNull()?.message) }
+            if (result.isSuccess) {
+                // 顶栏的「共 N 项」要跟着减：否则删掉一条后数目还挂着旧值，
+                // 用户会怀疑是不是没删掉
+                _state.update { it.copy(total = (it.total - 1).coerceAtLeast(0)) }
+            } else {
+                // 失败必须说出来。之前只写进 error，而 error 只在列表为空时才渲染 ——
+                // 一条删除失败的表现就只是「那一行又回来了」，没有任何解释
+                _state.update {
+                    it.copy(
+                        items = before,
+                        loadMoreError = null,
+                        notice = "删除失败：${result.exceptionOrNull()?.message ?: "未知错误"}",
+                    )
+                }
             }
         }
     }
 
+    /**
+     * 加载更多。
+     *
+     * 失败必须记进 [AccountListUiState.loadMoreError] 而不是 [AccountListUiState.error]：
+     * 页脚的自动触发写在「非 loading」分支里，失败时它重新进入组合就会再请求一次 ——
+     * 断网时表现为**无休止的重试循环**，界面上一句话都不说。有错误标记后页脚改为可点重试。
+     */
     fun loadMore() {
         val s = _state.value
         if (s.loading || s.loadingMore || s.items.isEmpty()) return
-        if (s.total > 0 && s.items.size >= s.total) return
+        if (s.exhausted || s.loadMoreError != null) return
+        if (s.total > 0 && s.items.size >= s.total) {
+            _state.update { it.copy(exhausted = true) }
+            return
+        }
 
-        _state.update { it.copy(loadingMore = true) }
+        _state.update { it.copy(loadingMore = true, loadMoreError = null) }
         viewModelScope.launch {
             val next = page + 1
             val result = runCatching {
@@ -214,9 +263,18 @@ class AccountListViewModel(
                 prev.copy(
                     loadingMore = false,
                     items = if (result.isSuccess) prev.items + more else prev.items,
+                    loadMoreError = if (result.isSuccess) null else result.exceptionOrNull()?.message,
+                    // 成功但本页为空 = 到底了（服务端不给 total 时的唯一终点信号）
+                    exhausted = result.isSuccess && more.isEmpty(),
                 )
             }
         }
+    }
+
+    /** 续加失败后的重试。 */
+    fun retryLoadMore() {
+        _state.update { it.copy(loadMoreError = null) }
+        loadMore()
     }
 
     companion object {
@@ -252,8 +310,9 @@ fun AccountListScreen(
     var dialog by remember { mutableStateOf<FolderDialog>(FolderDialog.None) }
     val isFavorites = kind == AccountListKind.Favorites
 
-    // 进入与返回本页时都重新拉取（含从详情页取消收藏后返回的情形）
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.load() }
+    // 进入与返回本页时都重新拉取（含从详情页取消收藏后返回的情形）。
+    // 静默刷新：保留列表与滚动位置，只是把数据换新。
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.load(silent = true) }
 
     // 操作结果只提示一次
     LaunchedEffect(state.notice) {
@@ -309,7 +368,8 @@ fun AccountListScreen(
                 onRetry = onLogin,
             )
 
-            state.loading -> LoadingBox()
+            // 有内容就不整屏转圈：让列表留在组合里，滚动位置才不会被注销
+            state.loading && state.items.isEmpty() -> LoadingBox()
 
             state.error != null && state.items.isEmpty() ->
                 ErrorBox(message = state.error.orEmpty(), onRetry = { vm.load() })
@@ -370,7 +430,13 @@ fun AccountListScreen(
                             }
                         }
                         item(key = "footer") {
-                            LoadMoreFooter(state.loadingMore) { vm.loadMore() }
+                            LoadMoreFooter(
+                                loading = state.loadingMore,
+                                error = state.loadMoreError,
+                                exhausted = state.exhausted,
+                                onLoadMore = { vm.loadMore() },
+                                onRetry = { vm.retryLoadMore() },
+                            )
                         }
                     }
                 }
@@ -461,29 +527,6 @@ private fun FolderRow(
                     },
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun LoadMoreFooter(loading: Boolean, onLoadMore: () -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxWidth().height(56.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (loading) {
-            CircularProgressIndicator(
-                color = JmTheme.colors.accent,
-                strokeWidth = 2.dp,
-                modifier = Modifier.size(22.dp),
-            )
-        } else {
-            LaunchedEffect(Unit) { onLoadMore() }
-            Text(
-                text = "上滑加载更多",
-                style = MaterialTheme.typography.labelSmall,
-                color = JmTheme.colors.textTertiary,
-            )
         }
     }
 }

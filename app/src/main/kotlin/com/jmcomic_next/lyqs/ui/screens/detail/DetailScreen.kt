@@ -146,12 +146,23 @@ class DetailViewModel(
      * 页面需要的是「校正已有状态」（例如收藏标记可能已在别处被改掉），
      * 而不是重来一次。若置 loading，`state.detail` 会短暂为 null，
      * 内容区会闪成加载态，章节目录的分页位置也会随之丢失。
+     *
+     * 同样地，**刷新失败也不能把已有内容清掉**：那次请求只是为了核对收藏标记，
+     * 网络抖一下就整页变成「加载失败」，用户连自己在看哪一话都找不回来了。
      */
     fun refresh() {
         if (_state.value.detail == null) load() else fetch(showLoading = false)
     }
 
+    /** 是否已有一次加载在飞。 */
+    private var inFlight = false
+
     private fun fetch(showLoading: Boolean) {
+        // `LifecycleEventEffect(ON_RESUME)` 在首次组合时就会立刻派发一次事件，
+        // 而 `init { load() }` 的请求此时还在路上 —— 没有这道闸门，每次打开详情页
+        // 都会发两次一模一样的 album 请求（也更难判断哪一次的失败该覆盖屏幕）。
+        if (inFlight) return
+        inFlight = true
         if (showLoading) {
             _state.update { it.copy(loading = true, error = null) }
         }
@@ -160,32 +171,36 @@ class DetailViewModel(
                 repo.bootstrap()
                 repo.album(comicId)
             }
-            val detail = result.getOrNull()
-            val series = detail?.series.orEmpty()
+            inFlight = false
+            val fresh = result.getOrNull()
 
-            // 仅当记录的那一话仍存在于目录里才算「续读」：目录会随作品改版变化，
-            // 指向一个不存在的章节会让用户点一下就报错
-            val saved = readProgress.lastChapterId(comicId)
-                ?.takeIf { id -> series.any { it.id == id } }
+            _state.update { prev ->
+                // 失败时保留上一次的内容与阅读入口，且只在「什么都没有」时报错
+                val detail = fresh ?: prev.detail
+                val series = fresh?.series.orEmpty()
 
-            val entry = when {
-                detail == null -> null
-                // 读到第一话时不叫「继续」，与从头开始没有区别
-                saved != null && saved != series.firstOrNull()?.id ->
-                    ReadEntry(saved, isResume = true, index = series.indexOfFirst { it.id == saved } + 1)
-                series.isNotEmpty() ->
-                    ReadEntry(series.first().id, isResume = false, index = 1)
-                else ->
-                    // 无章节作品：作品 id 自身就是可读单元
-                    ReadEntry(comicId, isResume = false, index = 0)
-            }
+                // 仅当记录的那一话仍存在于目录里才算「续读」：目录会随作品改版变化，
+                // 指向一个不存在的章节会让用户点一下就报错
+                val saved = readProgress.lastChapterId(comicId)
+                    ?.takeIf { id -> series.any { it.id == id } }
 
-            _state.update {
-                it.copy(
+                val entry = when {
+                    fresh == null -> prev.readEntry
+                    // 读到第一话时不叫「继续」，与从头开始没有区别
+                    saved != null && saved != series.firstOrNull()?.id ->
+                        ReadEntry(saved, isResume = true, index = series.indexOfFirst { it.id == saved } + 1)
+                    series.isNotEmpty() ->
+                        ReadEntry(series.first().id, isResume = false, index = 1)
+                    else ->
+                        // 无章节作品：作品 id 自身就是可读单元
+                        ReadEntry(comicId, isResume = false, index = 0)
+                }
+
+                prev.copy(
                     loading = false,
                     detail = detail,
                     readEntry = entry,
-                    error = result.exceptionOrNull()?.message,
+                    error = if (detail == null) result.exceptionOrNull()?.message else null,
                 )
             }
         }
@@ -383,9 +398,10 @@ fun DetailScreen(
         }
 
         when {
-            state.loading -> LoadingBox()
+            state.loading && state.detail == null -> LoadingBox()
 
-            state.error != null -> ErrorBox(message = state.error.orEmpty(), onRetry = { vm.load() })
+            state.error != null && state.detail == null ->
+                ErrorBox(message = state.error.orEmpty(), onRetry = { vm.load() })
 
             state.detail != null -> DetailContent(
                 detail = state.detail!!,
@@ -397,6 +413,10 @@ fun DetailScreen(
                 onOpenTag = onOpenTag,
                 onOpenComments = onOpenComments,
             )
+
+            // 兜底：加载结束却没有内容也没有错误（例如异常没有 message）时，
+            // 之前这里什么都不渲染，用户面对的是一张只有顶栏的白屏，且没有重试入口
+            else -> ErrorBox(message = "没能加载出这部作品", onRetry = { vm.load() })
         }
     }
 
