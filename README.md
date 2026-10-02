@@ -80,8 +80,8 @@ Compose 无法读取「已绘制内容」再模糊，因此改为「环境渐变
 | --- | --- | --- | --- |
 | **WindowGlass**（默认） | 8dp | 半透明 + 发丝描边 + 上缘高光 + Acrylic 颗粒 | Windows 11 窗口玻璃（窗口 8px 圆角） |
 | **Translucent** | 8dp | 不透明度 58% + 强调色 12% 薄染 + 64dp 模糊 + 亮描边 | Windhawk 的 Translucent 系列 |
-| **Miuix** | 20dp | 实心卡片、不画描边、不模糊、按下微缩 | HyperOS / MIUI |
-| **Material** | 16dp | 实心色调分层，靠色调差区分层级 | Material 3（圆角 4/8/12/16/28） |
+| **Miuix** | 16dp | 实心卡片、不画描边、不模糊、**连续圆角**、按下微缩 | HyperOS / MIUI |
+| **Material** | 12dp | 实心色调分层，靠色调差区分层级 | Material 3（圆角 4/8/12/16/28） |
 
 - **默认是 WindowGlass**：那是本应用原来的样子，升级不该把老用户的界面换掉。
 - WindowGlass 与 Translucent 同出 Windows 窗口玻璃一族，差别刻意落在「透多少」上：
