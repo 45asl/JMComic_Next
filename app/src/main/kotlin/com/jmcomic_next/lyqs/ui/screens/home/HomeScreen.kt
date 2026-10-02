@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Refresh
@@ -58,6 +59,7 @@ fun HomeScreen(
     onToggleTheme: () -> Unit,
     onOpenComic: (String) -> Unit,
     onOpenSection: (PromoteSection) -> Unit,
+    onOpenWeek: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalRepository.current
@@ -71,6 +73,15 @@ fun HomeScreen(
             title = "JMComic Next",
             subtitle = if (state.loading) "加载中…" else null,
             actions = {
+                // 周刊入口（官方在顶栏放的就是日历图标）
+                IconButton(onClick = onOpenWeek) {
+                    Icon(
+                        imageVector = Icons.Filled.CalendarMonth,
+                        contentDescription = "周刊",
+                        tint = JmTheme.colors.accent,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
                 IconButton(onClick = { vm.refresh() }) {
                     Icon(
                         imageVector = Icons.Filled.Refresh,

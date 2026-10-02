@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -71,6 +73,17 @@ import kotlinx.coroutines.launch
 enum class AccountListKind(val title: String, val icon: ImageVector, val emptyHint: String) {
     Favorites("我的收藏", Icons.Filled.BookmarkBorder, "还没有收藏，去详情页点收藏试试"),
     History("观看历史", Icons.Filled.History, "还没有观看记录"),
+    /**
+     * 追更。
+     *
+     * 与前两者的两点不同：列表接口是 **POST**（`album_tracking`），
+     * 而且服务端有上限（官方界面写着 500）—— 因此这一屏不显示「共 N 项」而是「N / 500」。
+     */
+    Tracking("我的追更", Icons.Filled.NotificationsNone, "还没有追更，去详情页点「追更」"),
+    ;
+
+    /** 追更上限，与官方界面一致。 */
+    val limit: Int? get() = if (this == Tracking) 500 else null
 }
 
 data class AccountListUiState(
@@ -150,6 +163,11 @@ class AccountListViewModel(
                         val p = repo.history(page = 1)
                         Triple(p.list, emptyList(), p.totalCount)
                     }
+                    AccountListKind.Tracking -> {
+                        // 追更列表是 POST（见 JmPaths.TRACKING_LIST），与上面两个 GET 不同
+                        val p = repo.trackingList(page = 1)
+                        Triple(p.items, emptyList(), p.total)
+                    }
                 }
             }
             if (gen != generation) return@launch
@@ -213,6 +231,29 @@ class AccountListViewModel(
         }
     }
 
+    /**
+     * 取消追更。
+     *
+     * 服务端的 POST 是**切换**语义，这里只在列表里点「取消」，因此不看返回的文案，
+     * 直接按本地的意图把这一行去掉；失败则恢复并提示。
+     */
+    fun untrack(comicId: String) {
+        if (kind != AccountListKind.Tracking) return
+        val before = _state.value.items
+        _state.update { it.copy(items = it.items.filterNot { c -> c.id == comicId }) }
+        viewModelScope.launch {
+            val result = runCatching { repo.toggleTracking(comicId) }
+            if (result.isFailure) {
+                _state.update {
+                    it.copy(
+                        items = before,
+                        notice = "取消追更失败：${result.exceptionOrNull()?.message ?: "未知错误"}",
+                    )
+                }
+            }
+        }
+    }
+
     /** 删除一条历史。收藏的移除走详情页的收藏按钮（服务端是切换式）。 */
     fun deleteHistory(comicId: String) {
         if (kind != AccountListKind.History) return
@@ -263,6 +304,7 @@ class AccountListViewModel(
                     AccountListKind.Favorites ->
                         repo.favorites(page = next, folderId = s.selectedFolder).list
                     AccountListKind.History -> repo.history(page = next).list
+                    AccountListKind.Tracking -> repo.trackingList(page = next).items
                 }
             }
             // 换过收藏夹或刷新过：这一页属于上一个筛选条件，丢弃；标记照例落下
@@ -338,7 +380,12 @@ fun AccountListScreen(
     Column(modifier = modifier.fillMaxSize()) {
         GlassTopBar(
             title = kind.title,
-            subtitle = if (state.loggedIn && state.total > 0) "共 ${state.total} 项" else null,
+            subtitle = when {
+                !state.loggedIn -> null
+                kind.limit != null -> "${state.items.size} / ${kind.limit}"
+                state.total > 0 -> "共 ${state.total} 项"
+                else -> null
+            },
             navigation = {
                 IconButton(onClick = onBack) {
                     Icon(
@@ -414,7 +461,18 @@ fun AccountListScreen(
                                     item = comic,
                                     coverUrl = repo.coverUrl(comic),
                                     onClick = { onOpenComic(comic.id) },
-                                    trailing = if (isFavorites) {
+                                    trailing = if (kind == AccountListKind.Tracking) {
+                                        {
+                                            IconButton(onClick = { vm.untrack(comic.id) }) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.NotificationsOff,
+                                                    contentDescription = "取消追更",
+                                                    tint = c.textTertiary,
+                                                    modifier = Modifier.size(20.dp),
+                                                )
+                                            }
+                                        }
+                                    } else if (isFavorites) {
                                         {
                                             IconButton(
                                                 onClick = { dialog = FolderDialog.Move(comic.id) },

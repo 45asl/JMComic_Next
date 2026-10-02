@@ -54,9 +54,6 @@ object JmPaths {
     /** 分类筛选（API_CATEGORIES_FILTER_LIST）。 */
     const val CATEGORIES_FILTER = "categories/filter"
 
-    /** 随机推荐（API_COMIC_RANDOM_RECOMMEND）。 */
-    const val RANDOM_RECOMMEND = "random_recommend"
-
     /** 应用配置（API_APP_SETTING），参数 `app_img_shunt`、`lang`、`t`。 */
     const val SETTING = "setting"
 
@@ -100,6 +97,80 @@ object JmPaths {
      * 详情页的评论用 `{mode: "all", page, aid}`，响应 `data` 为 `{total, list}`。
      */
     const val FORUM = "forum"
+
+    // ---- 期刊（周刊）与随机推荐 ----
+
+    /**
+     * 期刊列表（API_WEEK）。
+     *
+     * 响应 `{categories:[{id,title,time}], type:[{id,name}]}` ——
+     * `categories` 是**刊期**（`time` 形如「2026第258期09.25 - 09.18」，而 `title` 实测为空串），
+     * `type` 是作品类型（`manga` 日漫 / `another` 其他 / `hanman` 韩漫）。
+     * 两者都得**先取列表、再用列表里的 id 去筛**，不能自己编。
+     */
+    const val WEEK = "week"
+
+    /** 某期刊某类型的作品（API_WEEK__FILTER_LIST），参数 `id`（刊期）、`type`、`page`（1 起算）。 */
+    const val WEEK_FILTER = "week/filter"
+
+    /** 随机推荐（API_COMIC_RANDOM_RECOMMEND），无参数，`data` 为**裸数组**。 */
+    const val RANDOM_RECOMMEND_LIST = "random_recommend"
+
+    // ---- 创作者库（API_CREATOR_*）：画师与其作品的浏览入口 ----
+
+    /** 画师列表（API_CREATOR_AUTHOR），参数 `page`、`search_query`。 */
+    const val CREATOR_AUTHOR = "creator_author"
+
+    /** 作品列表（API_CREATOR_WORK），参数 `page`、`search_value`、`lang`、`source`。 */
+    const val CREATOR_WORK = "creator_work"
+
+    /** 某画师名下的作品（API_CREATOR_WORK_DETAIL），参数 `id`、`lang`、`source`。 */
+    const val CREATOR_WORK_DETAIL = "creator_work_detail"
+
+    /** 作品信息（API_CREATOR_WORK_INFO），参数 `id`：作者、日期与一组相关作品。 */
+    const val CREATOR_WORK_INFO = "creator_work_info"
+
+    /** 作品内容（API_CREATOR_WORK_INFO_DETAIL），参数 `id`：`images` 与正文，形态接近阅读数据。 */
+    const val CREATOR_WORK_INFO_DETAIL = "creator_work_info_detail"
+
+    /** 画师头像路径模板：`/media/library/artists/<id>/icon/<file>`。 */
+    const val ARTIST_ICON_TEMPLATE = "media/library/artists/%s/icon/%s"
+
+    /** 画师横幅路径模板：`/media/library/artists/<id>/banner/<file>`。 */
+    const val ARTIST_BANNER_TEMPLATE = "media/library/artists/%s/banner/%s"
+
+    // ---- 需要登录的漫画侧功能 ----
+
+    /**
+     * 追更（API_NOTIFICATIONS_SERTRACK）：GET `{id}` 查状态，POST `{id}` **切换**。
+     *
+     * 与「收藏」同一套路：POST 既是关注也是取关，响应里带一句结果文案。
+     */
+    const val SERTRACKING = "album_sertracking"
+
+    /** 追更列表（API_NOTIFICATIONS_TRACK_LIST）：**POST** `{page}`，注意是 POST 不是 GET。 */
+    const val TRACKING_LIST = "album_tracking"
+
+    /** 收藏的标签（API_TAGS_FAVORITE）：GET 取列表，上限 50。 */
+    const val TAGS_FAVORITE = "tags_favorite"
+
+    /** 收藏标签的增删（API_TAGS_FAVORITE_UPDATE）：POST `{type: add|remove, tags}`（逗号分隔）。 */
+    const val TAGS_FAVORITE_UPDATE = "tags_favorite_update"
+
+    /**
+     * 整部作品的下载（API_ALBUM_DOWNLOAD = `album_download_2`）。
+     *
+     * 用法是 `album_download_2/<作品id>`，**需要登录**，而且失败**不是 401**：
+     * 实测未登录时是 HTTP 200 + `{"status":"0","msg":"請先登入"}`，
+     * 所以判断得落在业务字段上。成功时给的是一个 `download_url`。
+     */
+    const val ALBUM_DOWNLOAD = "album_download_2"
+
+    /** 发表评论（API_COMMENT_SEND）：POST `{comment, aid, bid?, comment_id?}`。 */
+    const val COMMENT_SEND = "comment"
+
+    /** 删除自己发的评论（API_COMMENT_DETELE）：POST `{comment_id, aid?}`。 */
+    const val COMMENT_DELETE = "comment_delete"
 
     /**
      * 封面图路径模板。

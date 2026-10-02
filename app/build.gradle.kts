@@ -27,8 +27,13 @@ android {
         applicationId = "com.jmcomic_next.lyqs"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // 1.1.0-beta.1 = 周刊 / 画师与作品库 / 随机推荐 + 一轮缺陷修复
+        // 1.1.0-beta.2 = 追更 / 标签收藏 / 整部下载 / 评论发表与删除
+        // 1.1.0       = 上面两版的合集（漫画侧功能与官方客户端对齐）
+        // 1.1.1       = 真机验证后修掉的三处（周刊类型标签、标签收藏登录引导、账号入口两行两列）
+        // 1.1.2       = 用真实账号验证时抓到的四处（响应形态三处 + 非幂等请求被重发一次）
+        versionCode = 6
+        versionName = "1.1.2"
     }
 
     signingConfigs {

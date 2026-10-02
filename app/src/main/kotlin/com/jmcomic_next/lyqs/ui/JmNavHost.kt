@@ -37,6 +37,9 @@ import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.screens.auth.AuthScreen
 import com.jmcomic_next.lyqs.ui.screens.category.CategoryScreen
+import com.jmcomic_next.lyqs.ui.screens.creator.CreatorScreen
+import com.jmcomic_next.lyqs.ui.screens.creator.CreatorWorkScreen
+import com.jmcomic_next.lyqs.ui.screens.week.WeekScreen
 import com.jmcomic_next.lyqs.ui.screens.comments.CommentsScreen
 import com.jmcomic_next.lyqs.ui.screens.favorites.AccountListKind
 import com.jmcomic_next.lyqs.ui.screens.favorites.AccountListScreen
@@ -46,6 +49,7 @@ import com.jmcomic_next.lyqs.ui.screens.more.MoreListScreen
 import com.jmcomic_next.lyqs.ui.screens.profile.ProfileScreen
 import com.jmcomic_next.lyqs.ui.screens.reader.ReaderScreen
 import com.jmcomic_next.lyqs.ui.screens.search.SearchScreen
+import com.jmcomic_next.lyqs.ui.screens.tags.TagFavoritesScreen
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 
 /**
@@ -75,6 +79,11 @@ private const val ROUTE_AUTH = "auth?reason={reason}"
 private const val ROUTE_FAVORITES = "favorites"
 private const val ROUTE_HISTORY = "history"
 private const val ROUTE_COMMENTS = "comments/{aid}"
+private const val ROUTE_WEEK = "week"
+private const val ROUTE_TRACKING = "tracking"
+private const val ROUTE_TAGS = "tags"
+private const val ROUTE_CREATOR = "creator"
+private const val ROUTE_CREATOR_WORK = "creator/work/{id}"
 
 /**
  * 「更多」列表：首页某个推荐分区的完整列表，或连载更新表（分区 id 26）。
@@ -172,6 +181,7 @@ fun JmNavHost(
                     onOpenSection = { section ->
                         nav.push(moreFor(section.id, section.title.orEmpty()))
                     },
+                    onOpenWeek = { nav.push(ROUTE_WEEK) },
                 )
             }
 
@@ -179,6 +189,7 @@ fun JmNavHost(
                 CategoryScreen(
                     onOpenTag = { tag -> nav.push(searchFor(tag)) },
                     onOpenComic = { id -> nav.push("detail/$id") },
+                    onOpenCreators = { nav.push(ROUTE_CREATOR) },
                 )
             }
 
@@ -230,6 +241,8 @@ fun JmNavHost(
                     },
                     onOpenFavorites = { nav.push(ROUTE_FAVORITES) },
                     onOpenHistory = { nav.push(ROUTE_HISTORY) },
+                    onOpenTracking = { nav.push(ROUTE_TRACKING) },
+                    onOpenTags = { nav.push(ROUTE_TAGS) },
                 )
             }
 
@@ -259,6 +272,31 @@ fun JmNavHost(
                 )
             }
 
+            composable(ROUTE_WEEK) {
+                WeekScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenComic = { id -> nav.push("detail/$id") },
+                )
+            }
+
+            composable(ROUTE_CREATOR) {
+                CreatorScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenWork = { id -> nav.push("creator/work/$id") },
+                )
+            }
+
+            composable(
+                route = ROUTE_CREATOR_WORK,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+            ) { backStack ->
+                CreatorWorkScreen(
+                    workId = backStack.arguments?.getString("id").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                    onOpenWork = { id -> nav.push("creator/work/$id") },
+                )
+            }
+
             composable(
                 route = ROUTE_COMMENTS,
                 arguments = listOf(navArgument("aid") { type = NavType.StringType }),
@@ -266,6 +304,24 @@ fun JmNavHost(
                 CommentsScreen(
                     comicId = backStack.arguments?.getString("aid").orEmpty(),
                     onBack = { nav.popBackStack() },
+                    onNeedLogin = { nav.push(authFor("发表评论需要登录")) },
+                )
+            }
+
+            composable(ROUTE_TRACKING) {
+                AccountListScreen(
+                    kind = AccountListKind.Tracking,
+                    onBack = { nav.popBackStack() },
+                    onOpenComic = { id -> nav.push("detail/$id") },
+                    onLogin = { nav.push(authFor("追更需要登录")) },
+                )
+            }
+
+            composable(ROUTE_TAGS) {
+                TagFavoritesScreen(
+                    onBack = { nav.popBackStack() },
+                    onLogin = { nav.push(authFor("标签收藏需要登录")) },
+                    onOpenTag = { tag -> nav.push(searchFor(tag)) },
                 )
             }
 

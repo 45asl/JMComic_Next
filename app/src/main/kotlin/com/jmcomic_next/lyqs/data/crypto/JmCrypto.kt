@@ -97,13 +97,19 @@ object JmCrypto {
      * 相关背景见 [com.jmcomic_next.lyqs.data.remote.AdBlocker]。
      */
     fun decryptApiData(dataBase64: String, timeSeconds: Long): String? {
+        // 优先返回 JSON 形态（那说明密钥对了），但**不能只认 JSON**：
+        // 这个服务端有些接口的 data 就是一句人话 —— 实测 `album_sertracking` 回的是
+        // "已追踪!" / "已取消追踪!"。把这种当「解密失败」会让上层把请求**重发一遍**，
+        // 而非幂等的 POST 重发一次就是把刚做的操作撤销掉。
+        var messageLike: String? = null
         for (seed in listOf(TOKEN_SEED, TOKEN_SEED_ALT)) {
             val key = md5("$timeSeconds$seed")
-            val plain = decryptEcb(dataBase64, key) ?: continue
-            val trimmed = plain.trim()
+            val trimmed = decryptEcb(dataBase64, key)?.trim() ?: continue
+            if (trimmed.isEmpty()) continue
             if (trimmed.startsWith("{") || trimmed.startsWith("[")) return trimmed
+            if (messageLike == null) messageLike = trimmed
         }
-        return null
+        return messageLike
     }
 
     /**

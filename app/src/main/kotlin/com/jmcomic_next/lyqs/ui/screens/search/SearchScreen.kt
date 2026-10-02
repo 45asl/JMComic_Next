@@ -55,6 +55,7 @@ import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.prefs.AppPrefs
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
 import com.jmcomic_next.lyqs.ui.LocalRepository
+import com.jmcomic_next.lyqs.ui.components.ComicCard
 import com.jmcomic_next.lyqs.ui.components.ComicRow
 import com.jmcomic_next.lyqs.ui.components.ErrorBox
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
@@ -93,6 +94,13 @@ data class SearchUiState(
     val exhausted: Boolean = false,
     /** 空关键词被提交时给一句提示，而不是什么都不做。 */
     val hint: String? = null,
+    /**
+     * 随机推荐。
+     *
+     * 官方把它放在搜索页「还没开始搜」的时候（`Search.tsx` 的 `FETCH_RECOMMEND_THUNK`），
+     * 作用是给一个**不用想关键词**的入口 —— 空着的一屏比一屏推荐更让人无从下手。
+     */
+    val recommend: List<ListItem> = emptyList(),
 )
 
 class SearchViewModel(
@@ -118,6 +126,7 @@ class SearchViewModel(
 
     init {
         loadHotTags()
+        loadRecommend()
     }
 
     /** 热门标签失败不影响搜索本身，因此只静默留空。 */
@@ -128,6 +137,17 @@ class SearchViewModel(
                 repo.hotTags()
             }.getOrDefault(emptyList())
             _state.update { it.copy(hotTags = tags) }
+        }
+    }
+
+    /** 随机推荐同样只影响「没搜索时」那一屏，失败就留空。 */
+    private fun loadRecommend() {
+        viewModelScope.launch {
+            val items = runCatching {
+                repo.bootstrap()
+                repo.randomRecommend()
+            }.getOrDefault(emptyList())
+            _state.update { it.copy(recommend = items) }
         }
     }
 
@@ -403,6 +423,9 @@ fun SearchScreen(
             !state.searched -> SuggestionPanel(
                 history = state.history,
                 hotTags = state.hotTags,
+                recommend = state.recommend,
+                coverUrl = { repo.coverUrl(it) },
+                onOpenComic = onOpenComic,
                 onPick = { word ->
                     input = word
                     vm.onQueryChange(word)
@@ -469,6 +492,9 @@ fun SearchScreen(
 private fun SuggestionPanel(
     history: List<String>,
     hotTags: List<String>,
+    recommend: List<ListItem>,
+    coverUrl: (ListItem) -> String,
+    onOpenComic: (String) -> Unit,
     onPick: (String) -> Unit,
     onClearHistory: () -> Unit,
 ) {
@@ -508,7 +534,28 @@ private fun SuggestionPanel(
             }
         }
 
-        if (history.isEmpty() && hotTags.isEmpty()) {
+        // 随机推荐放在最下面：它是「没有想法时的电梯」，不该把历史与标签挤下去。
+        // 一屏里也能顺手滑到，所以不妨碍常规路径。
+        if (recommend.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(
+                    text = "随机推荐",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = c.text,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    items(recommend, key = { it.id }) { comic ->
+                        ComicCard(
+                            item = comic,
+                            coverUrl = coverUrl(comic),
+                            onClick = { onOpenComic(comic.id) },
+                        )
+                    }
+                }
+            }
+        }
+
+        if (history.isEmpty() && hotTags.isEmpty() && recommend.isEmpty()) {
             MessageState(
                 title = "搜点什么",
                 description = "支持按作品名、作者、标签检索",

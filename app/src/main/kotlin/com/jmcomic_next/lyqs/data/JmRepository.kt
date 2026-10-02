@@ -16,6 +16,17 @@ import com.jmcomic_next.lyqs.data.remote.dto.ForumPayload
 import com.jmcomic_next.lyqs.data.remote.dto.HistoryPayload
 import com.jmcomic_next.lyqs.data.remote.dto.MemberInfo
 import com.jmcomic_next.lyqs.data.remote.dto.CategoriesPayload
+import com.jmcomic_next.lyqs.data.remote.dto.CreatorAuthor
+import com.jmcomic_next.lyqs.data.remote.dto.CreatorEnvelope
+import com.jmcomic_next.lyqs.data.remote.dto.CreatorPage
+import com.jmcomic_next.lyqs.data.remote.dto.CreatorWork
+import com.jmcomic_next.lyqs.data.remote.dto.CreatorWorkContent
+import com.jmcomic_next.lyqs.data.remote.dto.CreatorWorkInfo
+import com.jmcomic_next.lyqs.data.remote.dto.DownloadPayload
+import com.jmcomic_next.lyqs.data.remote.dto.TagItem
+import com.jmcomic_next.lyqs.data.remote.dto.TagPayload
+import com.jmcomic_next.lyqs.data.remote.dto.WeekFilterPayload
+import com.jmcomic_next.lyqs.data.remote.dto.WeekPayload
 import com.jmcomic_next.lyqs.data.remote.dto.CategoryFilterPayload
 import com.jmcomic_next.lyqs.data.remote.dto.JmSettings
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
@@ -46,6 +57,18 @@ import kotlinx.serialization.json.jsonPrimitive
  * 不做缓存：列表数据量小、刷新频繁，缓存带来的失效问题比收益大。
  * 需要跨页面复用的只有 [bootstrap] 的结果，而它本就存在 [JmSession] 里。
  */
+/**
+ * 创作者库的一页。
+ *
+ * 单独一个类型而不是复用 [PagedList]：后者的元素固定是 [ListItem]（漫画列表项），
+ * 而这里放的是画师或作品，字段完全不同。硬塞进同一个类型只会让两边都不清楚。
+ */
+data class CreatorPageResult<T>(
+    val items: List<T> = emptyList(),
+    /** 总条数；服务端给的是字符串，取不到时为 0（未知）。 */
+    val total: Int = 0,
+)
+
 /**
  * 搜索结果。
  *
@@ -295,9 +318,9 @@ class JmRepository(
      */
     suspend fun toggleFavorite(aid: String): ActionResult = remote.post(
         JmPaths.FAVORITE,
-        ActionResult.serializer(),
+        JsonElement.serializer(),
         mapOf("aid" to aid),
-    )
+    ).toActionResult()
 
     /**
      * 收藏列表。
@@ -390,6 +413,178 @@ class JmRepository(
         ),
     )
 
+    // ------------------------------------------------------------------
+    // 期刊（周刊）/ 随机推荐 / 创作者库
+    // ------------------------------------------------------------------
+
+    /** 期刊列表：刊期（`categories`）与作品类型（`type`）。 */
+    suspend fun weekIssues(): WeekPayload = remote.get(
+        JmPaths.WEEK,
+        WeekPayload.serializer(),
+    )
+
+    /**
+     * 某期刊某类型下的作品。
+     *
+     * `id` 与 `type` 都必须取自 [weekIssues] 的返回 —— 实测刊期 id 是服务端的一串自增号
+     * （而且与「第 N 期」并不相等），`type` 是 `manga` / `another` / `hanman` 三个字符串。
+     *
+     * @param page 1 起算（这个接口与 `promote_list` 不同）
+     */
+    suspend fun weekList(issueId: String, type: String, page: Int): PagedList {
+        val payload = remote.get(
+            JmPaths.WEEK_FILTER,
+            WeekFilterPayload.serializer(),
+            mapOf("id" to issueId, "type" to type, "page" to page.toString()),
+        )
+        return PagedList(payload.list, payload.total?.toIntOrNull() ?: 0)
+    }
+
+    /** 随机推荐。`data` 是**裸数组**（与 `promote` 同形），不带分页信息。 */
+    suspend fun randomRecommend(): List<ListItem> = remote.get(
+        JmPaths.RANDOM_RECOMMEND_LIST,
+        ListSerializer(ListItem.serializer()),
+    )
+
+    /** 画师列表。`search_query` 留空即不筛。 */
+    suspend fun creatorAuthors(page: Int, query: String = ""): CreatorPageResult<CreatorAuthor> =
+        remote.get(
+            JmPaths.CREATOR_AUTHOR,
+            CreatorEnvelope.serializer(CreatorPage.serializer(CreatorAuthor.serializer())),
+            mapOf("page" to page.toString(), "search_query" to query),
+        ).toResult()
+
+    /**
+     * 作品列表（按平台/语言筛）。
+     *
+     * @param searchValue 关键词
+     * @param lang 语言，留空即不筛
+     * @param source 来源平台（`patreon` / `fanbox` …），留空即不筛
+     */
+    suspend fun creatorWorks(
+        page: Int,
+        searchValue: String = "",
+        lang: String = "",
+        source: String = "",
+    ): CreatorPageResult<CreatorWork> = remote.get(
+        JmPaths.CREATOR_WORK,
+        CreatorEnvelope.serializer(CreatorPage.serializer(CreatorWork.serializer())),
+        mapOf(
+            "page" to page.toString(),
+            "search_value" to searchValue,
+            "lang" to lang,
+            "source" to source,
+        ),
+    ).toResult()
+
+    /** 某画师名下的作品（`creator_work_detail`）。 */
+    suspend fun creatorWorksByAuthor(
+        id: String,
+        lang: String = "",
+        source: String = "",
+    ): CreatorPageResult<CreatorWork> = remote.get(
+        JmPaths.CREATOR_WORK_DETAIL,
+        CreatorEnvelope.serializer(CreatorPage.serializer(CreatorWork.serializer())),
+        mapOf("id" to id, "lang" to lang, "source" to source),
+    ).toResult()
+
+    /** 作品信息：作者、日期与一组相关作品。 */
+    suspend fun creatorWorkInfo(id: String): CreatorWorkInfo = remote.get(
+        JmPaths.CREATOR_WORK_INFO,
+        CreatorWorkInfo.serializer(),
+        mapOf("id" to id),
+    )
+
+    /**
+     * 作品内容。
+     *
+     * 注意**并非每个作品都有内容**：实测有的作品回 `total_page: 0`、`images: []`，
+     * 界面要能把这种当作「没有可看的内容」而不是错误。
+     */
+    suspend fun creatorWorkContent(id: String): CreatorWorkContent = remote.get(
+        JmPaths.CREATOR_WORK_INFO_DETAIL,
+        CreatorWorkContent.serializer(),
+        mapOf("id" to id),
+    )
+
+    // ------------------------------------------------------------------
+    // 需要登录的漫画侧功能：追更 / 标签收藏 / 下载 / 发评论
+    // ------------------------------------------------------------------
+
+    /**
+     * 查询是否已追更。
+     *
+     * 这个接口的 `data` 形态**没有文档且随版本变动**，实测未登录时是
+     * `{"status":"fail","msg":"請先登入會員"}`，登录后可能是布尔或对象，
+     * 因此这里宽容地判真：只有明确表示「真」才算追更，其余一律按未追更处理 ——
+     * 反过来（把失败当已追更）会让用户以为自己关注过了。
+     */
+    suspend fun isTracked(aid: String): Boolean =
+        remote.getRaw(JmPaths.SERTRACKING, mapOf("id" to aid)).trackedOrFalse()
+
+    /** 追更开关。**同一个 POST 既是追更也是取关**，响应里带一句结果文案。 */
+    suspend fun toggleTracking(aid: String): ActionResult = remote.post(
+        JmPaths.SERTRACKING,
+        JsonElement.serializer(),
+        mapOf("id" to aid),
+    ).toActionResult()
+
+    /** 追更列表（上限 500）。注意这个接口是 **POST**。 */
+    suspend fun trackingList(page: Int = 1): PagedList {
+        val payload = remote.post(
+            JmPaths.TRACKING_LIST,
+            MoreListPayload.serializer(),
+            mapOf("page" to page.toString()),
+        )
+        // 这个接口的键是 `item` / `totalCnt`（见 MoreListPayload 的说明）
+        return PagedList(payload.items, payload.totalEither)
+    }
+
+    /** 收藏的标签（上限 50）。 */
+    suspend fun favoriteTags(): List<TagItem> =
+        remote.get(JmPaths.TAGS_FAVORITE, TagPayload.serializer()).list
+
+    /** 收藏标签的增删。`type` 取 `add` / `remove`，`tags` 在请求里是**逗号分隔**的字符串。 */
+    suspend fun updateFavoriteTags(type: String, tags: List<String>): ActionResult = remote.post(
+        JmPaths.TAGS_FAVORITE_UPDATE,
+        JsonElement.serializer(),
+        mapOf("type" to type, "tags" to tags.joinToString(",")),
+    ).toActionResult()
+
+    /**
+     * 整部作品的下载信息。
+     *
+     * **需要登录，而且失败不是 401**：实测未登录时是 HTTP 200 +
+     * `{"status":"0","msg":"請先登入"}`，所以判断必须落在 [DownloadPayload.status] 上，
+     * 不能只看 HTTP 状态码。
+     */
+    suspend fun albumDownload(aid: String): DownloadPayload = remote.get(
+        "${JmPaths.ALBUM_DOWNLOAD}/$aid",
+        DownloadPayload.serializer(),
+    )
+
+    /** 发表评论。`commentId` 非空时是对某条评论的回复。 */
+    suspend fun sendComment(aid: String, comment: String, commentId: String? = null): ActionResult =
+        remote.post(
+            JmPaths.COMMENT_SEND,
+            JsonElement.serializer(),
+            buildMap {
+                put("comment", comment)
+                put("aid", aid)
+                commentId?.takeIf { it.isNotBlank() }?.let { put("comment_id", it) }
+            },
+        ).toActionResult()
+
+    /** 删除自己发的评论。 */
+    suspend fun deleteComment(commentId: String, aid: String? = null): ActionResult = remote.post(
+        JmPaths.COMMENT_DELETE,
+        JsonElement.serializer(),
+        buildMap {
+            put("comment_id", commentId)
+            aid?.takeIf { it.isNotBlank() }?.let { put("aid", it) }
+        },
+    ).toActionResult()
+
     /** 分类树与标签组。 */
     suspend fun categories(): CategoriesPayload = remote.get(
         JmPaths.CATEGORIES,
@@ -433,7 +628,7 @@ class JmRepository(
         JmPaths.PROMOTE_LIST,
         MoreListPayload.serializer(),
         mapOf("id" to id, "page" to page.toString()),
-    ).let { PagedList(it.list, it.total?.toIntOrNull() ?: 0) }
+    ).let { PagedList(it.items, it.totalEither) }
 
     /**
      * 连载更新表（每周更新）。
@@ -509,6 +704,45 @@ class JmRepository(
         return if (updateAt.isNullOrBlank()) base else "$base?v=$updateAt"
     }
 
+    /**
+     * 画师头像。
+     *
+     * 服务端只给文件名（实测 `author_avatar` 形如 `/media/library/artists/7118/icon/18446886.gif`，
+     * 有时只给最后一段），两种都要接：已经是完整路径的直接用，否则按模板拼。
+     */
+    fun artistIconUrl(author: CreatorAuthor): String? = creatorImageUrl(
+        id = author.id,
+        template = JmPaths.ARTIST_ICON_TEMPLATE,
+        path = author.avatar,
+    )
+
+    /** 画师横幅，规则同 [artistIconUrl]。 */
+    fun artistBannerUrl(author: CreatorAuthor): String? = creatorImageUrl(
+        id = author.id,
+        template = JmPaths.ARTIST_BANNER_TEMPLATE,
+        path = author.background,
+    )
+
+    /**
+     * 作品封面。
+     *
+     * 实测 `work_image` 给的是完整相对路径（`/media/library/album/1100557/thumb/album.jpg`），
+     * 因此直接拼图床主机即可，不需要模板。
+     */
+    fun creatorWorkCoverUrl(work: CreatorWork): String? =
+        work.image?.takeIf { it.isNotBlank() }?.let { session.imageUrl(it) }
+
+    /** 作品内容里的图片（同样是相对路径）。 */
+    fun creatorContentUrl(image: String): String = session.imageUrl(image)
+
+    private fun creatorImageUrl(id: String, template: String, path: String?): String? {
+        val raw = path?.takeIf { it.isNotBlank() } ?: return null
+        if (raw.startsWith("http")) return raw
+        // 已经是带目录的路径就直接用；只有文件名时才套模板
+        val full = if (raw.contains('/')) raw else template.format(id, raw)
+        return session.imageUrl(full)
+    }
+
     /** 用户头像地址。`photo` 是文件名，需按 `media/users/<photo>` 拼图床主机。 */
     fun avatarUrl(photo: String?): String? = photo
         ?.takeIf { it.isNotBlank() }
@@ -522,6 +756,14 @@ class JmRepository(
      */
     fun needsUnscramble(imageUrl: String, aid: Int, scrambleId: Int): Boolean =
         JmCrypto.needsUnscramble(imageUrl, aid, scrambleId)
+
+    /** 把创作者库那层 `{status, data:{total, content}}` 拉平成结果类型。 */
+    private fun <T> CreatorEnvelope<CreatorPage<T>>.toResult(): CreatorPageResult<T> =
+        CreatorPageResult(
+            items = data?.content.orEmpty(),
+            total = data?.total?.toIntOrNull() ?: 0,
+        )
+
 
     /** 宽容地把 `total` 读成 Int：服务端有时给字符串、有时给数字、有时干脆不给。 */
     private fun JsonElement?.asIntOrZero(): Int =
@@ -550,5 +792,47 @@ class JmRepository(
             authStore: AuthStore,
             session: JmSession = JmSession(),
         ): JmRepository = JmRepository(JmRemote(session, authStore), authStore)
+    }
+}
+
+/**
+ * 把动作类接口的 `data` 归一成 ActionResult。
+ *
+ * 这个服务端的动作响应**有两种形态**，实测都出现过：
+ *  - 对象：`{status:"ok", type:"add", msg:"..."}`
+ *  - **一整句话**：`"已追踪!"` / `"已取消追踪!"`
+ *
+ * 只按对象解析的话，第二种会抛解析错 —— 用户刚做的操作其实成功了，
+ * 界面却报「响应解析失败」，而且（在重试逻辑下）请求还会被重发一次。
+ * 纯文本一律当作「成功 + 这句话就是提示」，因为它本来就是给用户看的内容。
+ */
+internal fun JsonElement?.toActionResult(): ActionResult = when (this) {
+    null -> ActionResult()
+    is JsonObject -> runCatching {
+        JmJson.decodeFromJsonElement(ActionResult.serializer(), this)
+    }.getOrElse { ActionResult() }
+
+    is JsonPrimitive -> ActionResult(status = "ok", msg = content)
+    else -> ActionResult()
+}
+
+/**
+ * 判断追更状态。
+ *
+ * 输入是接口返回的**原文**（可能是一句人话，如「已追踪!」），因此按关键字判读：
+ * 含「取消」为假，含「追踪/追更」为真，`true`/`1` 为真。
+ * 把失败响应当成「已追更」比反过来危险 —— 用户会以为自己早就关注了，于是再也不会去点。
+ */
+internal fun String.trackedOrFalse(): Boolean {
+    val text = trim().trim('"')
+    return when {
+        text.isEmpty() -> false
+        text.contains("取消") -> false
+        text.equals("true", ignoreCase = true) || text == "1" -> true
+        text.equals("false", ignoreCase = true) || text == "0" -> false
+        // 实测未追更/已追更都可能回一句中文文案，含「追踪/追更」即视为已追更
+        text.contains("追踪") || text.contains("追更") -> true
+        text.contains("\"track\":true") || text.contains("\"is_track\":true") -> true
+        else -> false
     }
 }

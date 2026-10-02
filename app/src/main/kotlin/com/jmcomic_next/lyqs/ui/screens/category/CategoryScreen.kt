@@ -25,6 +25,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -258,6 +259,7 @@ class CategoryViewModel(private val repo: JmRepository) : ViewModel() {
 fun CategoryScreen(
     onOpenTag: (String) -> Unit,
     onOpenComic: (String) -> Unit,
+    onOpenCreators: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalRepository.current
@@ -304,6 +306,21 @@ fun CategoryScreen(
                             vm.selectSub(if (slug.isEmpty()) null else subs.find { it.slug == slug })
                         },
                     )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "画师与作品库",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = c.textTertiary,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onOpenCreators) {
+                        Text("进入 ›", color = c.accent)
+                    }
                 }
 
                 CategoryChipRow(
