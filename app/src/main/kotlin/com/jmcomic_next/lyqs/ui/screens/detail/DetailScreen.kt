@@ -124,6 +124,9 @@ data class ReadEntry(
         }
 }
 
+/** 紧随初始加载之后的那次 `ON_RESUME` 刷新被吞掉的窗口（毫秒）。 */
+private const val REFRESH_DEBOUNCE_MS = 1_500L
+
 class DetailViewModel(
     private val repo: JmRepository,
     private val readProgress: ReadProgressStore,
@@ -151,16 +154,24 @@ class DetailViewModel(
      * 网络抖一下就整页变成「加载失败」，用户连自己在看哪一话都找不回来了。
      */
     fun refresh() {
+        // 刚刚才拉过就不要再拉一次。首次打开详情页时 `ON_RESUME` 会在
+        // **初始请求已经返回之后**才派发（实测间隔约 0.5 秒，因为导航转场先结束），
+        // 于是「打开一次 = 两次 album」，第二次纯粹是浪费；
+        // 从阅读页返回这类真正的重新进入间隔远大于这个窗口，不受影响。
+        val since = System.currentTimeMillis() - lastFetchAt
+        if (lastFetchAt > 0 && since < REFRESH_DEBOUNCE_MS) return
         if (_state.value.detail == null) load() else fetch(showLoading = false)
     }
 
     /** 是否已有一次加载在飞。 */
     private var inFlight = false
 
+    /** 上一次请求**完成**的时刻，用于吃掉紧随其后的那次 `ON_RESUME` 刷新。 */
+    private var lastFetchAt = 0L
+
     private fun fetch(showLoading: Boolean) {
         // `LifecycleEventEffect(ON_RESUME)` 在首次组合时就会立刻派发一次事件，
-        // 而 `init { load() }` 的请求此时还在路上 —— 没有这道闸门，每次打开详情页
-        // 都会发两次一模一样的 album 请求（也更难判断哪一次的失败该覆盖屏幕）。
+        // 若那次事件正好落在请求在飞期间，这道闸门会把它挡掉
         if (inFlight) return
         inFlight = true
         if (showLoading) {
@@ -172,6 +183,7 @@ class DetailViewModel(
                 repo.album(comicId)
             }
             inFlight = false
+            lastFetchAt = System.currentTimeMillis()
             val fresh = result.getOrNull()
 
             _state.update { prev ->

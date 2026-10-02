@@ -3,9 +3,12 @@ package com.jmcomic_next.lyqs.ui.screens.reader
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -27,6 +30,7 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,8 +61,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
+import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import coil3.request.transformations
@@ -450,6 +456,9 @@ private fun ScrollReader(payload: ReadPayload, repo: JmRepository) {
                 scrambleId = payload.scrambleId,
                 repo = repo,
                 contentScale = ContentScale.FillWidth,
+                // 3:4 是绝大多数页的比例，用它撑出占位高度：否则加载中与失败的页是 0 高，
+                // 用户看到的是「两张图之间莫名多出一段空白」，也点不到重试
+                placeholderRatio = 0.72f,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(Radius.xs)),
@@ -598,22 +607,84 @@ private fun ReaderImage(
     repo: JmRepository,
     contentScale: ContentScale,
     modifier: Modifier = Modifier,
+    placeholderRatio: Float? = null,
 ) {
     val context = LocalPlatformContext.current
-    val request = ImageRequest.Builder(context)
-        .data(image.image)
-        .crossfade(true)
-        .apply {
-            if (repo.needsUnscramble(image.image, aid, scrambleId)) {
-                transformations(ScrambleTransformation(aid = aid, page = image.fileNameStem))
-            }
-        }
-        .build()
+    // 重试次数。每次自增都会换一个新的 memoryCacheKey，让 Coil 真正重新发一次请求 ——
+    // 否则相同的请求实例会被判定为「没有变化」，界面会永远停在失败状态上。
+    var attempt by remember(image.image) { mutableIntStateOf(0) }
 
-    AsyncImage(
-        model = request,
-        contentDescription = "第 ${image.page} 页",
-        contentScale = contentScale,
-        modifier = modifier,
-    )
+    val request = remember(image.image, attempt) {
+        ImageRequest.Builder(context)
+            .data(image.image)
+            .crossfade(true)
+            .apply {
+                if (attempt > 0) memoryCacheKey("${image.image}#retry$attempt")
+                if (repo.needsUnscramble(image.image, aid, scrambleId)) {
+                    transformations(ScrambleTransformation(aid = aid, page = image.fileNameStem))
+                }
+            }
+            .build()
+    }
+    val painter = rememberAsyncImagePainter(request)
+    val state by painter.state.collectAsStateWithLifecycle()
+
+    Box(modifier) {
+        Image(
+            painter = painter,
+            contentDescription = "第 ${image.page} 页",
+            contentScale = contentScale,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        when (state) {
+            // 图片失败此前没有任何提示：滚动模式下是一段说不清的空白，
+            // 翻页模式下是一整页黑屏，都无法重试，只能整章重新进
+            is AsyncImagePainter.State.Error -> PageFallback(
+                text = "这一页加载失败 · 点击重试",
+                placeholderRatio = placeholderRatio,
+                onClick = { attempt++ },
+            )
+
+            is AsyncImagePainter.State.Loading -> PageFallback(
+                text = null,
+                placeholderRatio = placeholderRatio,
+                onClick = null,
+            )
+
+            else -> Unit
+        }
+    }
+}
+
+/** 图片的加载中 / 失败占位。[text] 为空表示加载中。 */
+@Composable
+private fun PageFallback(text: String?, placeholderRatio: Float?, onClick: (() -> Unit)?) {
+    val c = JmTheme.colors
+    val size = if (placeholderRatio != null) {
+        Modifier.fillMaxWidth().aspectRatio(placeholderRatio)
+    } else {
+        Modifier.fillMaxSize()
+    }
+    Box(
+        modifier = size.background(c.surfaceSunken).then(
+            if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+        ),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (text != null) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall,
+                color = c.accent,
+                textAlign = TextAlign.Center,
+            )
+        } else {
+            CircularProgressIndicator(
+                color = c.accent,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
 }
