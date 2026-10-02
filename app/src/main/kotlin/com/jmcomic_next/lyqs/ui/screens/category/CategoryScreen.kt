@@ -110,6 +110,9 @@ class CategoryViewModel(private val repo: JmRepository) : ViewModel() {
 
     private var page = 1
 
+    /** 每次换分类/子类/排序后重新加载时自增，用于丢弃过期的「加载更多」结果。 */
+    private var generation = 0
+
     init {
         loadTree()
     }
@@ -177,14 +180,23 @@ class CategoryViewModel(private val repo: JmRepository) : ViewModel() {
     fun loadList() {
         if (_state.value.parent == null) return
         val key = filterKey()
+        generation++
+        val gen = generation
         page = 1
         _state.update {
-            it.copy(loadingList = true, listError = null, loadMoreError = null, exhausted = false)
+            it.copy(
+                loadingList = true,
+                listError = null,
+                loadMoreError = null,
+                loadingMore = false,
+                exhausted = false,
+            )
         }
         viewModelScope.launch {
             val result = runCatching {
                 repo.categoryFilter(key, page = 1, order = _state.value.sort.key)
             }
+            if (gen != generation) return@launch
             _state.update {
                 it.copy(
                     loadingList = false,
@@ -206,11 +218,17 @@ class CategoryViewModel(private val repo: JmRepository) : ViewModel() {
             return
         }
 
+        val gen = generation
         _state.update { it.copy(loadingMore = true, loadMoreError = null) }
         viewModelScope.launch {
             val next = page + 1
             val result = runCatching {
                 repo.categoryFilter(key, page = next, order = _state.value.sort.key)
+            }
+            // 分类/子类/排序已被改过：这一页属于旧条件，丢弃；标记照例落下
+            if (gen != generation) {
+                _state.update { it.copy(loadingMore = false) }
+                return@launch
             }
             _state.update { prev ->
                 val more = result.getOrNull()?.items.orEmpty()

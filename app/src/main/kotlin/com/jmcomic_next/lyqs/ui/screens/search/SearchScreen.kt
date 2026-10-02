@@ -107,6 +107,15 @@ class SearchViewModel(
     private val pageSize = 80
     private var page = 1
 
+    /**
+     * 每次「重新搜索」自增的世代号。
+     *
+     * 改筛选项/换关键词时会从第一页重来，而此时可能还有一个在飞的「加载更多」；
+     * 它回来时若照旧并进列表，就会把**上一个条件的**结果混进新结果里 ——
+     * 界面表现为「列表前后内容对不上」，是用户最难描述、也最难复现的一类错误。
+     */
+    private var generation = 0
+
     init {
         loadHotTags()
     }
@@ -152,10 +161,12 @@ class SearchViewModel(
         // 记历史放在发起请求之前：用户按下搜索就代表这次检索意图成立，
         // 哪怕请求失败，这个词也仍然是他想搜的
         prefs.addSearchHistory(q)
+        generation++
         page = 1
         _state.update {
             it.copy(
                 loading = true,
+                loadingMore = false,
                 error = null,
                 hint = null,
                 loadMoreError = null,
@@ -213,6 +224,7 @@ class SearchViewModel(
         }
 
         val f = s.filters
+        val gen = generation
         _state.update { it.copy(loadingMore = true, loadMoreError = null) }
         viewModelScope.launch {
             val next = page + 1
@@ -225,6 +237,12 @@ class SearchViewModel(
                     year = f.year.takeIf { it.isNotEmpty() },
                     month = f.month.takeIf { it.isNotEmpty() },
                 )
+            }
+            // 条件已变：这次的结果属于上一轮搜索，直接丢弃。
+            // 但「正在续加」的标记必须落下 —— 否则它会一直挂着，新条件再也加载不了下一页
+            if (gen != generation) {
+                _state.update { it.copy(loadingMore = false) }
+                return@launch
             }
             _state.update { prev ->
                 var more = result.getOrNull()?.page?.items.orEmpty()

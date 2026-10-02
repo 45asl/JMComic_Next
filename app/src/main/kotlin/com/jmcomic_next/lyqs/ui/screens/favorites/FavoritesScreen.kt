@@ -103,6 +103,9 @@ class AccountListViewModel(
     private val pageSize = 20
     private var page = 1
 
+    /** 每次重新加载（换收藏夹、回到前台刷新）自增的世代号，用于丢弃过期的「加载更多」结果。 */
+    private var generation = 0
+
     // 不再在 init 里加载：改由界面的 ON_RESUME 触发，这样「从详情页取消收藏后返回」
     // 也会重新拉取，而不是显示进入本页那一刻的旧快照。
     fun consumeNotice() = _state.update { it.copy(notice = null) }
@@ -123,6 +126,7 @@ class AccountListViewModel(
                 loading = !keepContent,
                 error = null,
                 loadMoreError = null,
+                loadingMore = false,
                 loggedIn = loggedIn,
             )
         }
@@ -131,6 +135,8 @@ class AccountListViewModel(
             return
         }
 
+        generation++
+        val gen = generation
         viewModelScope.launch {
             page = 1
             val result = runCatching {
@@ -146,6 +152,7 @@ class AccountListViewModel(
                     }
                 }
             }
+            if (gen != generation) return@launch
             _state.update {
                 // 静默刷新失败时保留原有内容，只把错误附在状态里；
                 // 若把 items 一起清空，用户看到的就是「刷新一下什么都没了」
@@ -247,6 +254,7 @@ class AccountListViewModel(
             return
         }
 
+        val gen = generation
         _state.update { it.copy(loadingMore = true, loadMoreError = null) }
         viewModelScope.launch {
             val next = page + 1
@@ -256,6 +264,11 @@ class AccountListViewModel(
                         repo.favorites(page = next, folderId = s.selectedFolder).list
                     AccountListKind.History -> repo.history(page = next).list
                 }
+            }
+            // 换过收藏夹或刷新过：这一页属于上一个筛选条件，丢弃；标记照例落下
+            if (gen != generation) {
+                _state.update { it.copy(loadingMore = false) }
+                return@launch
             }
             _state.update { prev ->
                 val more = result.getOrDefault(emptyList())
