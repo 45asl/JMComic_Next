@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.theme
 
+import androidx.compose.animation.core.Easing
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -142,13 +143,66 @@ data class TypeScale(
     val lineHeightFactor: Float,
 )
 
+/**
+ * 动效性格。**与 [ThemeStyle] 正交** ——「界面像谁」和「动起来是什么手感」是两件事，
+ * 用户可能喜欢 HyperOS 的实心卡片，却想要 Plasma 那种柔和的过渡。
+ *
+ * - [Standard]：本应用原来的动效，时长偏短、曲线偏「标准」，切换干脆。
+ * - [Plasma]：仿 KDE Plasma。KDE 的界面动效基本就是 Qt 的 `QEasingCurve` ——
+ *   出现用 `OutCubic`、消失用 `InCubic`，时长取 Kirigami 的 long/veryLong（200/400ms）。
+ *   表现出来是起步快、收尾长、位移更柔，不像原来那样「啪」地换掉。
+ */
+enum class MotionStyle(val label: String, val tagline: String) {
+    Standard(
+        label = "标准",
+        tagline = "短促直接：切换干脆、位移很小",
+    ),
+    Plasma(
+        label = "Plasma",
+        tagline = "仿 KDE Plasma：出慢入快、时长更长、位移更柔",
+    ),
+    ;
+
+    companion object {
+        val Default = Standard
+        fun fromName(name: String?): MotionStyle =
+            entries.firstOrNull { it.name == name } ?: Default
+    }
+}
+
 /** 动效参数。Miuix 的弹性手感不是靠时长，而是靠 spring，因此单独一个开关。 */
 data class MotionSpec(
     val fast: Int,
     val base: Int,
     val slow: Int,
     val springy: Boolean,
-)
+    /** 进入（出现）曲线。 */
+    val enter: Easing = JmEasing.fluent,
+    /** 退出（消失）曲线。 */
+    val exit: Easing = JmEasing.standard,
+    /**
+     * 页面切换的位移比例（相对屏宽），0 = 只淡入淡出。
+     *
+     * 这个值比时长更能决定「生硬还是柔和」：位移大就是「滑」进来的，
+     * 位移小 + 长收尾才是 KDE 那种「被推开、然后稳住」的感觉。
+     */
+    val slide: Float = 0.06f,
+) {
+    /**
+     * 换成 Plasma 的时长与曲线，**保留该风格自己的弹性开关**。
+     *
+     * 时长取 Kirigami 的单位：longDuration = 200ms、veryLongDuration = 400ms；
+     * 比原来（120/200/320）长约 25%，这是「不那么生硬」的一半来源，另一半是曲线。
+     */
+    fun asPlasma(): MotionSpec = copy(
+        fast = 150,
+        base = 250,
+        slow = 420,
+        enter = JmEasing.outCubic,
+        exit = JmEasing.inCubic,
+        slide = 0.16f,
+    )
+}
 
 /**
  * 一套完整风格。配色不在里面 —— 配色由 [JmTheme] 按「风格 + 深浅色 + 动态取色」算出来，

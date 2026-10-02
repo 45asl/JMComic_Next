@@ -3,6 +3,8 @@ package com.jmcomic_next.lyqs.data.prefs
 import android.content.Context
 import androidx.core.content.edit
 import com.jmcomic_next.lyqs.ui.theme.ThemeStyle
+import com.jmcomic_next.lyqs.ui.theme.MotionStyle
+import com.jmcomic_next.lyqs.ui.UiOptions
 import com.jmcomic_next.lyqs.data.remote.JmJson
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -56,6 +58,55 @@ class AppPrefs(context: Context) {
         get() = sp.getBoolean(KEY_DYNAMIC, false)
         set(value) = sp.edit { putBoolean(KEY_DYNAMIC, value) }
 
+    // ---- 1.4.0 的五个可选项。默认全部关闭 / 取标准档，升级不动任何人的界面 ----
+
+    /** 悬浮底栏：底栏浮在内容之上（胶囊形），而不是贴底的一条。 */
+    var floatingBottomBar: Boolean
+        get() = sp.getBoolean(KEY_FLOATING_BAR, false)
+        set(value) = sp.edit { putBoolean(KEY_FLOATING_BAR, value) }
+
+    /** 莫奈取色套用到模糊：用动态取色派生的色相给模糊层上色。 */
+    var monetBlur: Boolean
+        get() = sp.getBoolean(KEY_MONET_BLUR, false)
+        set(value) = sp.edit { putBoolean(KEY_MONET_BLUR, value) }
+
+    /** 通透模式：玻璃不覆盖底色、只留模糊；同时打开文字阴影保证可读。 */
+    var ultraTranslucent: Boolean
+        get() = sp.getBoolean(KEY_ULTRA_TRANSLUCENT, false)
+        set(value) = sp.edit { putBoolean(KEY_ULTRA_TRANSLUCENT, value) }
+
+    /** 预测性返回手势（Android 13+）。 */
+    var predictiveBack: Boolean
+        get() = sp.getBoolean(KEY_PREDICTIVE_BACK, false)
+        set(value) = sp.edit { putBoolean(KEY_PREDICTIVE_BACK, value) }
+
+    /** 动效性格：标准 / Plasma。 */
+    var motionStyle: MotionStyle
+        get() = MotionStyle.fromName(sp.getString(KEY_MOTION_STYLE, null))
+        set(value) = sp.edit { putString(KEY_MOTION_STYLE, value.name) }
+
+    /**
+     * 五个可选项作为一个整体读写。
+     *
+     * 这样设置页只需要一个 `UiOptions + onUiOptionsChange`，而不是五个开关各配一对回调；
+     * 也让「新增一个开关」不必再改一遍四处函数签名。
+     */
+    var uiOptions: UiOptions
+        get() = UiOptions(
+            floatingBottomBar = floatingBottomBar,
+            monetBlur = monetBlur,
+            ultraTranslucent = ultraTranslucent,
+            predictiveBack = predictiveBack,
+            motionStyle = motionStyle,
+        )
+        set(value) {
+            floatingBottomBar = value.floatingBottomBar
+            monetBlur = value.monetBlur
+            ultraTranslucent = value.ultraTranslucent
+            predictiveBack = value.predictiveBack
+            motionStyle = value.motionStyle
+        }
+
     /**
      * 搜索历史，最近的在前。
      *
@@ -99,6 +150,11 @@ class AppPrefs(context: Context) {
         const val KEY_THEME = "theme_mode"
         const val KEY_STYLE = "theme_style"
         const val KEY_DYNAMIC = "dynamic_color"
+        const val KEY_FLOATING_BAR = "floating_bottom_bar"
+        const val KEY_MONET_BLUR = "monet_blur"
+        const val KEY_ULTRA_TRANSLUCENT = "ultra_translucent"
+        const val KEY_PREDICTIVE_BACK = "predictive_back"
+        const val KEY_MOTION_STYLE = "motion_style"
         const val KEY_READER_MODE = "reader_mode"
         const val KEY_SEARCH_HISTORY = "search_history"
         const val SEARCH_HISTORY_LIMIT = 20

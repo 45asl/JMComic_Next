@@ -10,7 +10,8 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.JMComic_Next">
+        android:theme="@style/Theme.JMComic_Next"
+        android:enableOnBackInvokedCallback="true">
 
         <activity
             android:name=".MainActivity"

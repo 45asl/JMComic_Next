@@ -4,6 +4,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.jmcomic_next.lyqs.ui.UiOptions
+import com.jmcomic_next.lyqs.ui.theme.JmEasing
+import com.jmcomic_next.lyqs.ui.theme.MotionStyle
 import com.jmcomic_next.lyqs.ui.theme.RadiusScale
 import com.jmcomic_next.lyqs.ui.theme.Styles
 import com.jmcomic_next.lyqs.ui.theme.SurfaceCraft
@@ -219,6 +222,71 @@ class ThemeStyleTest {
         ThemeStyle.entries.forEach {
             val v = Styles.of(it).wallpaperScrim
             assertTrue("$it 的遮罩要在 0..0.8 内", v in 0f..0.8f)
+        }
+    }
+
+    // ---- 1.4.0 的可选项与动效性格 ----
+
+    @Test
+    fun `plasma motion softens timing but keeps the style's spring`() {
+        val standard = Styles.of(ThemeStyle.WindowGlass).motion
+        val plasma = standard.asPlasma()
+
+        // 时长更长：Kirigami 的 long/veryLong（200/400ms）对上原来的 120/200/320
+        assertTrue("Plasma 的时长应当更长", plasma.base > standard.base)
+        assertTrue("Plasma 的慢档应当更长", plasma.slow > standard.slow)
+        // 位移更大 —— 这是「柔和」最直接的来源（长收尾 + 更明显的位移）
+        assertTrue("Plasma 的位移应当更大", plasma.slide > standard.slide)
+        // 曲线换成 Qt 的 OutCubic / InCubic
+        assertEquals(JmEasing.outCubic, plasma.enter)
+        assertEquals(JmEasing.inCubic, plasma.exit)
+
+        // 弹性是**风格**的属性（HyperOS 的按下回弹），不该被动效性格覆盖掉：
+        // Plasma 只改曲线与时长，springy 原样带过来
+        assertEquals(standard.springy, plasma.springy)
+        assertEquals(
+            Styles.of(ThemeStyle.Miuix).motion.springy,
+            Styles.of(ThemeStyle.Miuix).motion.asPlasma().springy,
+        )
+    }
+
+    @Test
+    fun `option defaults preserve the existing look`() {
+        // 这五个都是「可选」功能：默认必须什么都不改，否则升级就动了别人的界面
+        val d = UiOptions()
+        assertFalse("悬浮底栏默认关", d.floatingBottomBar)
+        assertFalse("莫奈套用到模糊默认关", d.monetBlur)
+        assertFalse("通透模式默认关", d.ultraTranslucent)
+        assertFalse("预测性返回默认关", d.predictiveBack)
+        assertEquals(MotionStyle.Standard, d.motionStyle)
+        assertEquals(MotionStyle.Standard, MotionStyle.Default)
+
+        // 持久化的脏值不该让应用起不来（与 ThemeStyle.fromName 同样的约定）
+        assertEquals(MotionStyle.Default, MotionStyle.fromName(null))
+        assertEquals(MotionStyle.Default, MotionStyle.fromName("Plasmaa"))
+        assertEquals(MotionStyle.Plasma, MotionStyle.fromName("Plasma"))
+    }
+
+    @Test
+    fun `monet tints only exist where a dynamic scheme exists`() {
+        // 「莫奈取色套用在模糊上」依赖调色板里的三个色相。
+        // 固定色板没有它 —— 所以那个开关在没开动态取色时自然不生效，
+        // 这是设计而不是漏做（否则会变成「打开没反应」的假开关）。
+        listOf(true, false).forEach { dark ->
+            assertTrue(
+                "M3 基线配色必须带莫奈色相",
+                baselineM3Palette(dark).monetTints.size >= 3,
+            )
+            assertEquals(
+                "固定色板不该假装有莫奈取色",
+                0,
+                paletteFor(ThemeStyle.WindowGlass, dark).monetTints.size,
+            )
+            assertEquals(
+                "固定色板不该假装有莫奈取色",
+                0,
+                paletteFor(ThemeStyle.Miuix, dark).monetTints.size,
+            )
         }
     }
 }

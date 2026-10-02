@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.jmcomic_next.lyqs.ui.LocalUiOptions
 import com.jmcomic_next.lyqs.ui.LocalWallpaper
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 
@@ -43,6 +44,7 @@ fun AmbientBackdrop(
     val c = JmTheme.colors
     val spec = JmTheme.spec
     val wall = LocalWallpaper.current
+    val options = LocalUiOptions.current
 
     // 底的高斯模糊来自两处，取较大者：风格自己的 backdropBlur（Acrylic 40dp /
     // Translucent 64dp / FlatBlur 56dp），以及用户在壁纸设置里手动调的模糊。
@@ -52,6 +54,11 @@ fun AmbientBackdrop(
     val effectiveBlur = maxOf(spec.surface.backdropBlur, wall.blur.dp)
     // 同一个令牌的另一半：Acrylic 在模糊之后还会提饱和度，以前也没实现
     val saturate = spec.surface.backdropSaturate
+
+    // 莫奈取色套用在模糊上（可选）：用动态取色派生的三个色相给「底」上色。
+    // 只把强调色换成系统色的话，背景仍是我们自己定的渐变，玻璃糊出来的颜色与壁纸无关；
+    // 拿不到动态取色（Android 12 以下或没开）时 monetTints 为空，这个开关自动不生效。
+    val monet = if (options.monetBlur) c.monetTints else emptyList()
 
     Box(modifier = modifier.fillMaxSize()) {
         // 1. 渐变网格（或实心风格的纯色底）
@@ -75,7 +82,7 @@ fun AmbientBackdrop(
                     val glow = spec.backdropGlow
                     val glowA = Brush.radialGradient(
                         colors = listOf(
-                            c.accent.copy(alpha = 0.45f * glow),
+                            (monet.getOrNull(0) ?: c.accent).copy(alpha = 0.45f * glow),
                             Color.Transparent,
                         ),
                         center = Offset(w * 0.12f, -h * 0.08f),
@@ -85,17 +92,19 @@ fun AmbientBackdrop(
                     // 右上：偏紫的补光斑
                     val glowB = Brush.radialGradient(
                         colors = listOf(
-                            c.tintWarm.copy(alpha = 0.34f * glow),
+                            (monet.getOrNull(1) ?: c.tintWarm).copy(alpha = 0.34f * glow),
                             Color.Transparent,
                         ),
                         center = Offset(w * 0.88f, h * 0.04f),
                         radius = maxOf(w, h) * 0.68f,
                     )
 
-                    // 下方：偏青的收尾光斑
+                    // 下方的收尾光斑。开了「莫奈套用到模糊」时，三团光斑改用系统取色的
+                    // primary / secondary / tertiary —— 这是让背景跟着壁纸走的唯一入口，
+                    // 否则背景永远是我们自己挑的那套冷暖色
                     val glowC = Brush.radialGradient(
                         colors = listOf(
-                            c.tintCool.copy(alpha = 0.30f * glow),
+                            (monet.getOrNull(2) ?: c.tintCool).copy(alpha = 0.30f * glow),
                             Color.Transparent,
                         ),
                         center = Offset(w * 0.62f, h * 1.08f),
@@ -114,7 +123,7 @@ fun AmbientBackdrop(
                 },
         )
 
-        // 2. 壁纸图片 + 遮罩
+        // 2. 壁纸图片
         if (wall.showsImage) {
             AsyncImage(
                 model = wall.url,
@@ -133,6 +142,34 @@ fun AmbientBackdrop(
                     // 那时壁纸仍是清晰的 —— 比整块糊掉或直接不显示都要好
                     .then(if (effectiveBlur > 0.dp) Modifier.blur(effectiveBlur) else Modifier),
             )
+        }
+
+        // 3. 莫奈上色层：压在「底」（渐变或模糊后的壁纸）之上、遮罩与内容之下。
+        //    放在遮罩之下是有意的 —— 遮罩负责文字可读性，不能被上色层顶掉。
+        if (monet.size >= 3) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(
+                            // 透明度刻意压得低（16/10/14%）：这一层是铺满整屏的，
+                            // 实测 34/22/30% 会把整屏平均亮度抬 15 级，卡片与文字的对比一起被冲掉；
+                            // 莫奈的「存在感」主要交给上面那三团改成系统色相的光斑，
+                            // 这一层只负责把整体色温拉过去
+                            colors = listOf(
+                                monet[0].copy(alpha = 0.16f),
+                                monet[1].copy(alpha = 0.10f),
+                                monet[2].copy(alpha = 0.14f),
+                            ),
+                            start = Offset.Zero,
+                            end = Offset.Infinite,
+                        ),
+                    ),
+            )
+        }
+
+        // 4. 壁纸遮罩
+        if (wall.showsImage) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()

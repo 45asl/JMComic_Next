@@ -170,6 +170,16 @@ data class JmPalette(
 
     /** 环境渐变底：不提供壁纸，仅用这组渐层作为 Acrylic 的采样底 */
     val backdrop: List<Color>,
+
+    /**
+     * 莫奈（动态取色）派生出的三个色相：`primary` / `secondary` / `tertiary`。
+     *
+     * 用来给**模糊层**上色（设置里的「莫奈取色套用在模糊上」）：
+     * 只换强调色的话，背景仍是我们自己定的渐变，玻璃糊出来的颜色跟系统壁纸无关；
+     * 有了这三个色相，模糊层才能跟着系统的取色走。
+     * 空列表 = 没有动态取色可用，这时那个开关自然不生效。
+     */
+    val monetTints: List<Color> = emptyList(),
 )
 
 /** 浅色 · Mica Light + 柔和 MIUI 渐变底 */

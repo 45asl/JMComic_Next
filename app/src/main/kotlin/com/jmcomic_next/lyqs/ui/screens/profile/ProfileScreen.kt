@@ -79,6 +79,8 @@ import com.jmcomic_next.lyqs.ui.theme.Motion
 import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.ui.theme.Spacing
 import com.jmcomic_next.lyqs.ui.theme.Styles
+import com.jmcomic_next.lyqs.ui.UiOptions
+import com.jmcomic_next.lyqs.ui.theme.MotionStyle
 import com.jmcomic_next.lyqs.ui.theme.ThemeStyle
 import com.jmcomic_next.lyqs.ui.theme.paletteFor
 
@@ -100,6 +102,8 @@ fun ProfileScreen(
     themeStyle: ThemeStyle,
     onThemeStyleChange: (ThemeStyle) -> Unit,
     isDark: Boolean,
+    uiOptions: UiOptions,
+    onUiOptionsChange: (UiOptions) -> Unit,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
     onOpenFavorites: () -> Unit,
@@ -141,6 +145,8 @@ fun ProfileScreen(
                     dynamicColor = dynamicColor,
                     onDynamicColorChange = onDynamicColorChange,
                     isDark = isDark,
+                    uiOptions = uiOptions,
+                    onUiOptionsChange = onUiOptionsChange,
                 )
             }
             item { WallpaperCard() }
@@ -330,6 +336,8 @@ private fun AppearanceCard(
     dynamicColor: Boolean,
     onDynamicColorChange: (Boolean) -> Unit,
     isDark: Boolean,
+    uiOptions: UiOptions,
+    onUiOptionsChange: (UiOptions) -> Unit,
 ) {
     val c = JmTheme.colors
     SettingCard(title = "外观") {
@@ -407,6 +415,84 @@ private fun AppearanceCard(
             }
             Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
         }
+
+        // ---- 1.4.0 的五个可选项：默认全关，升级不动任何人的界面 ----
+
+        OptionSwitch(
+            title = "悬浮底栏",
+            desc = "底栏变成浮在内容之上的胶囊，选中项带一块会滑过去的底。",
+            checked = uiOptions.floatingBottomBar,
+            onCheckedChange = { onUiOptionsChange(uiOptions.copy(floatingBottomBar = it)) },
+        )
+
+        OptionSwitch(
+            title = "通透模式",
+            desc = "玻璃不再覆盖底色，只留模糊与描边；文字自动加一圈反色柔光保证可读。",
+            checked = uiOptions.ultraTranslucent,
+            onCheckedChange = { onUiOptionsChange(uiOptions.copy(ultraTranslucent = it)) },
+        )
+
+        OptionSwitch(
+            title = "莫奈取色套用在模糊上",
+            desc = "用系统动态取色的主色 / 次色 / 第三色给背景与模糊层上色。" +
+                "需要开动态取色且系统为 Android 12+，否则这个开关不生效。",
+            checked = uiOptions.monetBlur,
+            onCheckedChange = { onUiOptionsChange(uiOptions.copy(monetBlur = it)) },
+        )
+
+        OptionSwitch(
+            title = "预测性返回",
+            desc = "Android 13+：返回手势进行中，当前页跟手退后并缩小，松手前就能看出要退出。",
+            checked = uiOptions.predictiveBack,
+            onCheckedChange = { onUiOptionsChange(uiOptions.copy(predictiveBack = it)) },
+        )
+
+        Text(
+            text = "动效",
+            style = MaterialTheme.typography.bodyLarge,
+            color = c.text,
+            modifier = Modifier.padding(top = Spacing.lg),
+        )
+        Text(
+            text = uiOptions.motionStyle.tagline,
+            style = MaterialTheme.typography.labelSmall,
+            color = c.textTertiary,
+            modifier = Modifier.padding(top = Spacing.xxs),
+        )
+        SingleChoiceSegmentedButtonRow(
+            modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
+        ) {
+            MotionStyle.entries.forEachIndexed { index, style ->
+                SegmentedButton(
+                    selected = uiOptions.motionStyle == style,
+                    onClick = { onUiOptionsChange(uiOptions.copy(motionStyle = style)) },
+                    shape = SegmentedButtonDefaults.itemShape(index, MotionStyle.entries.size),
+                ) {
+                    Text(style.label, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
+/** 一行「标题 + 说明 + 开关」。可选项都走它，省得每加一个开关就抄一遍 Row。 */
+@Composable
+private fun OptionSwitch(
+    title: String,
+    desc: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val c = JmTheme.colors
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = Spacing.lg),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = Spacing.md)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = c.text)
+            Text(desc, style = MaterialTheme.typography.labelSmall, color = c.textTertiary)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

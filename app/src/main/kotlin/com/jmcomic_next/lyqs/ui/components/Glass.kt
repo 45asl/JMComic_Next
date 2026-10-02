@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jmcomic_next.lyqs.ui.LocalWallpaper
+import com.jmcomic_next.lyqs.ui.LocalUiOptions
 import com.jmcomic_next.lyqs.ui.theme.jmShape
 import com.jmcomic_next.lyqs.ui.theme.Elevation
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
@@ -51,6 +52,14 @@ import com.jmcomic_next.lyqs.ui.theme.SurfaceCraft
  * [Card] → `--surface-1`，[Raised] → `--surface-2`，[Flyout] → `--surface-3`。
  */
 enum class GlassLevel { Card, Raised, Flyout }
+
+/**
+ * 通透模式下保留的填充比例。
+ *
+ * 8% 是「看得出有块面」与「几乎完全透明」之间的折中：为 0 时浅色壁纸上的卡片会
+ * 彻底消失，只剩一条发丝线。
+ */
+private const val ULTRA_TRANSLUCENT_FILL = 0.08f
 
 /**
  * 一层表面（卡片 / 浮起 / 浮层）。
@@ -83,6 +92,7 @@ fun GlassSurface(
     val c = JmTheme.colors
     val surface = JmTheme.spec.surface
     val spec = JmTheme.spec
+    val options = LocalUiOptions.current
     val noiseBrush = rememberNoiseBrush()
 
     // 底有没有真实纹理（用户开了壁纸）。Acrylic 的颗粒只在有东西可散射时才画 ——
@@ -109,7 +119,19 @@ fun GlassSurface(
         GlassLevel.Flyout -> c.surface3
     }
     // 风格只做整体增减：调色板里深浅色各自的不透明度是设计的一部分
-    val fill = raw.copy(alpha = (raw.alpha * surface.fillAlphaScale).coerceIn(0f, 1f))
+    //
+    // 通透模式（可选）：玻璃**不再覆盖底色**，只留模糊 + 描边。
+    // 这里不是把 alpha 直接归零，而是压到 8% —— 完全为 0 时，浅色壁纸上的卡片会彻底
+    // 消失、只剩一条发丝线，用户会以为界面坏了；留一点点才能看出「这里有一块面」。
+    // 实心风格（Miuix / Material）不参与：它们本来就是靠不透明卡片立起来的，
+    // 抽掉填充等于把风格抹掉。
+    val ultra = options.ultraTranslucent && (
+        surface.craft == SurfaceCraft.Acrylic ||
+            surface.craft == SurfaceCraft.Glass ||
+            surface.craft == SurfaceCraft.Blur
+        )
+    val alphaScale = surface.fillAlphaScale * (if (ultra) ULTRA_TRANSLUCENT_FILL else 1f)
+    val fill = raw.copy(alpha = (raw.alpha * alphaScale).coerceIn(0f, 1f))
     val elevation = when (level) {
         GlassLevel.Card -> Elevation.sm
         GlassLevel.Raised -> Elevation.card
@@ -138,7 +160,7 @@ fun GlassSurface(
             .then(
                 // 强调色薄染（Translucent）：铺在填充之上、内容之下，像 Windhawk 把
                 // 系统强调色染到窗口上一样
-                if (surface.accentTint > 0f) {
+                if (surface.accentTint > 0f && !ultra) {
                     Modifier.drawBehind {
                         drawRect(color = c.accent.copy(alpha = surface.accentTint))
                     }
@@ -150,7 +172,7 @@ fun GlassSurface(
                 // 薄层只属于玻璃风格：Material / Miuix / FlatBlur 的表面是平的
                 // （haka_comic 的 AppBarTheme 就是 scrolledUnderElevation 0 + 透明 surfaceTint），
                 // 给它们加一层橙蓝渐变就不是那几套风格了
-                if (tinted && (surface.craft == SurfaceCraft.Acrylic ||
+                if (tinted && !ultra && (surface.craft == SurfaceCraft.Acrylic ||
                         surface.craft == SurfaceCraft.Glass)) {
                     // drawBehind 而不是 drawWithContent：薄层是**材质的一部分**，
                     // 要铺在文字下面。原来的写法把薄层盖在内容上，等于给整块玻璃上的字

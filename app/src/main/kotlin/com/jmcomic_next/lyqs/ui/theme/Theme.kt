@@ -17,12 +17,16 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import com.jmcomic_next.lyqs.ui.LocalUiOptions
+import com.jmcomic_next.lyqs.ui.UiOptions
 import androidx.core.view.WindowCompat
 
 /**
@@ -33,7 +37,10 @@ val LocalJmPalette = staticCompositionLocalOf<JmPalette> {
     error("JmPalette 尚未提供：请用 JmTheme { ... } 包裹内容")
 }
 
-/** 动效曲线，对应博客的 --ease-standard / --ease-decel / --ease-fluent */
+/**
+ * 动效曲线，对应博客的 --ease-standard / --ease-decel / --ease-fluent，
+ * 以及 1.4.0 为「Plasma」动效性格补的 Qt 曲线。
+ */
 object JmEasing {
     /** --ease-standard: cubic-bezier(0.33, 0, 0.67, 1) */
     val standard: Easing = CubicBezierEasing(0.33f, 0f, 0.67f, 1f)
@@ -43,6 +50,20 @@ object JmEasing {
 
     /** --ease-fluent: cubic-bezier(0.16, 1, 0.3, 1) */
     val fluent: Easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
+
+    /**
+     * Qt `QEasingCurve::OutCubic`：cubic-bezier(0.215, 0.61, 0.355, 1)。
+     *
+     * KDE 的界面动效基本就是 Qt 那几根曲线，Plasma 里「出现/进入」用得最多的就是它 ——
+     * 起步快、收尾慢，所以看起来是「被推到位」而不是「匀速滑到位」。
+     */
+    val outCubic: Easing = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)
+
+    /** Qt `QEasingCurve::InCubic`：cubic-bezier(0.55, 0.055, 0.675, 0.19)，用于「消失/退出」。 */
+    val inCubic: Easing = CubicBezierEasing(0.55f, 0.055f, 0.675f, 0.19f)
+
+    /** Qt `QEasingCurve::InOutQuad`：cubic-bezier(0.455, 0.03, 0.515, 0.955)，用于对称的往复动画。 */
+    val inOutQuad: Easing = CubicBezierEasing(0.455f, 0.03f, 0.515f, 0.955f)
 }
 
 /**
@@ -54,44 +75,66 @@ object JmEasing {
  * 风格之间字号差别不大，**字重**差别是很明显的：HyperOS 的标题是 Bold、
  * Material 3 的标题是 Medium，同一句「我的」在两者里长得不一样，这正是识别度所在。
  */
-private fun typographyOf(scale: TypeScale): Typography = Typography(
+private fun typographyOf(scale: TypeScale, shadow: Shadow? = null): Typography = Typography(
     displaySmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = scale.titleWeight,
         fontSize = scale.display,
         lineHeight = scale.display * 1.30f,
+        shadow = shadow,
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = scale.titleWeight,
         fontSize = scale.title,
         lineHeight = scale.title * 1.40f,
+        shadow = shadow,
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = scale.subtitleWeight,
         fontSize = scale.subtitle,
         lineHeight = scale.subtitle * 1.50f,
+        shadow = shadow,
     ),
     bodyLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = scale.bodyWeight,
         fontSize = scale.body,
         lineHeight = scale.body * scale.lineHeightFactor,
+        shadow = shadow,
     ),
     bodyMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = scale.bodyWeight,
         fontSize = scale.label,
         lineHeight = scale.label * 1.60f,
+        shadow = shadow,
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
         fontSize = scale.caption,
         lineHeight = scale.caption * 1.50f,
+        shadow = shadow,
     ),
 )
+
+/**
+ * 通透模式下的文字处理。
+ *
+ * 玻璃不再覆盖底色之后，文字就直接压在壁纸上：浅色壁纸上的深色字、深色壁纸上的浅色字
+ * 都会糊掉。做法是给所有文字加一圈与文字**反色**的柔光 ——
+ * 深色字配白晕、浅色字配黑晕，等于给文字垫了一层底。
+ *
+ * 之所以不选「把壁纸压暗」：那会把这套风格唯一的目的（通透）直接抵消掉；
+ * 描边/阴影的代价只落在文字上，壁纸该多清楚还是多清楚。
+ */
+private fun readabilityShadow(dark: Boolean): Shadow = if (dark) {
+    Shadow(color = Color.Black.copy(alpha = 0.72f), offset = Offset(0f, 1f), blurRadius = 5f)
+} else {
+    Shadow(color = Color.White.copy(alpha = 0.90f), offset = Offset(0f, 1f), blurRadius = 5f)
+}
 
 /**
  * 把 [JmPalette] 投影到 Material 3 的 [ColorScheme]。
@@ -153,6 +196,9 @@ private fun JmPalette.withDynamicAccent(dynamic: ColorScheme, dark: Boolean): Jm
     accentFg = dynamic.onPrimary,
     accentSoft = dynamic.primary.copy(alpha = if (dark) 0.14f else 0.10f),
     accentGlow = dynamic.primary.copy(alpha = if (dark) 0.34f else 0.28f),
+    // 三个色相一起带上：设置里的「莫奈取色套用在模糊上」要给模糊层上色，
+    // 只有一个强调色是不够的（背景会变成单色雾）
+    monetTints = listOf(dynamic.primary, dynamic.secondary, dynamic.tertiary),
 )
 
 /**
@@ -167,11 +213,19 @@ fun JmTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     style: ThemeStyle = ThemeStyle.Default,
+    options: UiOptions = UiOptions(),
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val useDynamic = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val spec = Styles.of(style)
+
+    // 动效性格与界面风格正交：Plasma 只换曲线与时长，保留该风格自己的弹性开关
+    // （HyperOS 的按下回弹是弹簧，不该被 Plasma 的 tween 覆盖掉）
+    val styleSpec = Styles.of(style)
+    val spec = when (options.motionStyle) {
+        MotionStyle.Standard -> styleSpec
+        MotionStyle.Plasma -> styleSpec.copy(motion = styleSpec.motion.asPlasma())
+    }
 
     // Material You 的动态取色：系统从壁纸推出一整套颜色角色（不只是主色）。
     // 这份 scheme 有两个用途：Material 风格直接拿它当配色，另外几套玻璃风格只从里面借强调色。
@@ -211,10 +265,15 @@ fun JmTheme(
     CompositionLocalProvider(
         LocalJmPalette provides palette,
         LocalJmSpec provides spec,
+        LocalUiOptions provides options,
     ) {
         MaterialTheme(
+            // 通透模式下所有文字都加一圈反色柔光，否则文字压在壁纸上会糊
             colorScheme = colorScheme,
-            typography = typographyOf(spec.type),
+            typography = typographyOf(
+                spec.type,
+                shadow = if (options.ultraTranslucent) readabilityShadow(darkTheme) else null,
+            ),
             content = content,
         )
     }

@@ -1,9 +1,28 @@
 package com.jmcomic_next.lyqs.ui
 
 import android.net.Uri
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
@@ -18,10 +37,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -53,6 +78,8 @@ import com.jmcomic_next.lyqs.ui.screens.search.SearchScreen
 import com.jmcomic_next.lyqs.ui.screens.settings.BlockSettingsScreen
 import com.jmcomic_next.lyqs.ui.screens.tags.TagFavoritesScreen
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
+import com.jmcomic_next.lyqs.ui.theme.Radius
+import com.jmcomic_next.lyqs.ui.theme.Spacing
 
 /**
  * 底部主导航。
@@ -126,6 +153,8 @@ fun JmNavHost(
     themeStyle: ThemeStyle,
     onThemeStyleChange: (ThemeStyle) -> Unit,
     isDark: Boolean,
+    uiOptions: UiOptions,
+    onUiOptionsChange: (UiOptions) -> Unit,
 ) {
     val nav = rememberNavController()
     val repo = LocalRepository.current
@@ -133,49 +162,82 @@ fun JmNavHost(
     val entry by nav.currentBackStackEntryAsState()
     val currentRoute = entry?.destination?.route
     val showBottomBar = MainTab.entries.any { it.pattern == currentRoute }
+    val motion = JmTheme.motion
+
+    /** Tab 切换的统一写法。悬浮与贴底两种底栏共用同一段行为。 */
+    val switchTab: (MainTab) -> Unit = { tab ->
+        if (currentRoute != tab.pattern) {
+            nav.navigate(tab.route) {
+                // 单层栈：Tab 间切换不堆积历史
+                popUpTo(MainTab.Home.route) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
+
+    // 预测性返回：手势进行中把当前页跟手推出一点，松手前就能看到「要退出了」。
+    var backProgress by remember { mutableFloatStateOf(0f) }
+    val canGoBack = nav.previousBackStackEntry != null
 
     Scaffold(
         containerColor = Color.Transparent,
         contentColor = JmTheme.colors.text,
         bottomBar = {
             if (showBottomBar) {
-                GlassSurface(
-                    modifier = Modifier.fillMaxWidth(),
-                    level = GlassLevel.Raised,
-                    shape = RoundedCornerShape(0.dp),
-                    tinted = true,
-                ) {
-                    NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
-                        MainTab.entries.forEach { tab ->
-                            NavigationBarItem(
-                                selected = currentRoute == tab.pattern,
-                                onClick = {
-                                    if (currentRoute != tab.pattern) {
-                                        nav.navigate(tab.route) {
-                                            // 单层栈：Tab 间切换不堆积历史
-                                            popUpTo(MainTab.Home.route) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    }
-                                },
-                                icon = { Icon(tab.icon, contentDescription = tab.label) },
-                                label = {
-                                    Text(tab.label, style = MaterialTheme.typography.labelSmall)
-                                },
-                            )
-                        }
-                    }
+                if (uiOptions.floatingBottomBar) {
+                    FloatingBottomBar(currentRoute = currentRoute, onSelect = switchTab)
+                } else {
+                    DockedBottomBar(currentRoute = currentRoute, onSelect = switchTab)
                 }
             }
         },
     ) { insets ->
-        NavHost(
-            navController = nav,
-            startDestination = MainTab.Home.route,
-            modifier = Modifier.fillMaxSize().padding(bottom = insets.calculateBottomPadding()),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    // 跟手退后：轻微缩小 + 左移 + 变淡，进度由系统手势的 progress 驱动
+                    val p = if (uiOptions.predictiveBack) backProgress else 0f
+                    scaleX = 1f - 0.06f * p
+                    scaleY = 1f - 0.06f * p
+                    translationX = -size.width * 0.12f * p
+                    alpha = 1f - 0.18f * p
+                },
         ) {
-            composable(MainTab.Home.route) {
+            NavHost(
+                navController = nav,
+                startDestination = MainTab.Home.route,
+                modifier = Modifier.fillMaxSize().padding(bottom = insets.calculateBottomPadding()),
+                // 页面切换动画。以前一个都没配，用的是导航库的默认淡入 ——
+                // 配上偏短的时长就显得「啪」地换掉，这正是「生硬」的来源。
+                // 曲线、时长与位移比例都随动效性格走（标准 / Plasma）。
+                enterTransition = {
+                    fadeIn(tween(motion.base, easing = motion.enter)) +
+                        slideInHorizontally(tween(motion.base, easing = motion.enter)) {
+                            (it * motion.slide).toInt()
+                        }
+                },
+                exitTransition = {
+                    fadeOut(tween(motion.fast, easing = motion.exit)) +
+                        slideOutHorizontally(tween(motion.base, easing = motion.exit)) {
+                            -(it * motion.slide * 0.5f).toInt()
+                        }
+                },
+                popEnterTransition = {
+                    fadeIn(tween(motion.base, easing = motion.enter)) +
+                        slideInHorizontally(tween(motion.base, easing = motion.enter)) {
+                            -(it * motion.slide * 0.5f).toInt()
+                        }
+                },
+                popExitTransition = {
+                    fadeOut(tween(motion.fast, easing = motion.exit)) +
+                        slideOutHorizontally(tween(motion.base, easing = motion.exit)) {
+                            (it * motion.slide).toInt()
+                        }
+                },
+            ) {
+                composable(MainTab.Home.route) {
                 HomeScreen(
                     dark = isDark,
                     onToggleTheme = {
@@ -242,6 +304,8 @@ fun JmNavHost(
                     themeStyle = themeStyle,
                     onThemeStyleChange = onThemeStyleChange,
                     isDark = isDark,
+                    uiOptions = uiOptions,
+                    onUiOptionsChange = onUiOptionsChange,
                     onLogin = { nav.push(authFor("")) },
                     onLogout = {
                         // 登出要走接口，但本地登出不依赖它成功（见 JmRepository.logout）
@@ -379,6 +443,143 @@ fun JmNavHost(
                     onModeChange = onReaderModeChange,
                     onBack = { nav.popBackStack() },
                 )
+            }
+            }
+        }
+
+        // 预测性返回的注册位置很关键：`OnBackPressedDispatcher` 按**后加入优先**派发，
+        // 而 NavHost 在组合时也注册了自己的返回回调。所以这一句必须写在 NavHost **之后** ——
+        // 写在前面会被 NavHost 盖掉，手势永远轮不到这里（这是最容易踩的一个坑）。
+        if (uiOptions.predictiveBack) {
+            PredictiveBackHandler(enabled = canGoBack) { progress ->
+                try {
+                    progress.collect { backEvent -> backProgress = backEvent.progress }
+                    // 手势走完 → 真正出栈
+                    nav.popBackStack()
+                } finally {
+                    // 取消（collect 抛 CancellationException）或完成后都要归零，
+                    // 否则页面会停在退到一半的状态
+                    backProgress = 0f
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 贴底底栏（默认）。
+ *
+ * 就是原来那一条：占满宽度、贴住屏幕底边，用玻璃表面托着 M3 的 [NavigationBar]。
+ */
+@Composable
+private fun DockedBottomBar(
+    currentRoute: String?,
+    onSelect: (MainTab) -> Unit,
+) {
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        level = GlassLevel.Raised,
+        shape = RoundedCornerShape(0.dp),
+        tinted = true,
+    ) {
+        NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
+            MainTab.entries.forEach { tab ->
+                NavigationBarItem(
+                    selected = currentRoute == tab.pattern,
+                    onClick = { onSelect(tab) },
+                    icon = { Icon(tab.icon, contentDescription = tab.label) },
+                    label = { Text(tab.label, style = MaterialTheme.typography.labelSmall) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 悬浮底栏（可选，参考 KernelSU 那种做法）。
+ *
+ * 与贴底那一版的区别不只是「留了边距」：
+ *
+ *  1. 胶囊形、四周留白、带浮层投影 —— 它是**浮在内容之上**的一块，不是页面的底边；
+ *  2. 选中态是**一块会滑过去的圆角底**（跟着 `animateFloatAsState` 滑，不是跳），
+ *     而不是 Material 的胶囊指示器 —— 滑动本身是这个形态最核心的手感。
+ *
+ * 这里仍然为它保留了 Scaffold 的底部内边距（内容不钻到胶囊下面）：
+ * 叠在内容上好看，但会把列表最后一条永久压住，得不偿失。
+ */
+@Composable
+private fun FloatingBottomBar(
+    currentRoute: String?,
+    onSelect: (MainTab) -> Unit,
+) {
+    val c = JmTheme.colors
+    val motion = JmTheme.motion
+    val selectedIndex = MainTab.entries
+        .indexOfFirst { it.pattern == currentRoute }
+        .coerceAtLeast(0)
+    val indicator by animateFloatAsState(
+        targetValue = selectedIndex.toFloat(),
+        animationSpec = tween(motion.base, easing = motion.enter),
+        label = "bottomBarIndicator",
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = Spacing.lg,
+                end = Spacing.lg,
+                top = Spacing.xs,
+                bottom = Spacing.md,
+            ),
+    ) {
+        GlassSurface(
+            modifier = Modifier.fillMaxWidth(),
+            level = GlassLevel.Flyout,
+            shape = RoundedCornerShape(Radius.xl),
+            tinted = true,
+        ) {
+            BoxWithConstraints(Modifier.fillMaxWidth().height(64.dp)) {
+                val itemWidth = maxWidth / MainTab.entries.size
+
+                // 滑动指示器：先画，于是它在下层
+                Box(
+                    modifier = Modifier
+                        .offset(x = itemWidth * indicator)
+                        .width(itemWidth)
+                        .fillMaxHeight()
+                        .padding(horizontal = Spacing.xs, vertical = Spacing.sm)
+                        .clip(RoundedCornerShape(Radius.lg))
+                        .background(c.accentSoft),
+                )
+
+                Row(Modifier.fillMaxSize()) {
+                    MainTab.entries.forEach { tab ->
+                        val selected = currentRoute == tab.pattern
+                        val tint = if (selected) c.accent else c.textSecondary
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(Radius.lg))
+                                .clickable { onSelect(tab) },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = tab.label,
+                                tint = tint,
+                                modifier = Modifier.size(22.dp),
+                            )
+                            Text(
+                                text = tab.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = tint,
+                            )
+                        }
+                    }
+                }
             }
         }
     }

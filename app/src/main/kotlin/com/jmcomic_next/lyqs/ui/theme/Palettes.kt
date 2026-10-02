@@ -213,6 +213,9 @@ fun ColorScheme.toJmPalette(): JmPalette = JmPalette(
 
     // 层级全由 surfaceContainer 家族承担，应用底色就是 surface 本身（三层同色 = 平底）
     backdrop = listOf(surface, surface, surface),
+
+    // Material 本身就是「整份来自 M3」，这三个色相只是给模糊层上色用
+    monetTints = listOf(primary, secondary, tertiary),
 )
 
 /** 关闭动态取色时的 Material：M3 的**基线**配色（`lightColorScheme()` / `darkColorScheme()`）。 */

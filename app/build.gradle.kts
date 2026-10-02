@@ -40,8 +40,9 @@ android {
         // 1.3.1       = Bing 壁纸按屏幕方向取竖屏裁切（改尺寸段，不是拉伸）
         // 1.3.2       = 修 Miuix 连续圆角：右上/左下两个角被反向扫，被切掉一块
         // 1.3.3       = 修玻璃的灰膜与失效的模糊令牌；新增 FlatBlur；Material 改成 Material You 3
-        versionCode = 14
-        versionName = "1.3.3"
+        // 1.4.0       = 五个可选项：悬浮底栏 / 莫奈套用到模糊 / 通透模式 / 预测性返回 / Plasma 动效
+        versionCode = 15
+        versionName = "1.4.0"
     }
 
     signingConfigs {

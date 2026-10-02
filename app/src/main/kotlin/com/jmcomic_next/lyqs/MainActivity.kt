@@ -16,6 +16,7 @@ import com.jmcomic_next.lyqs.data.prefs.AppPrefs
 import com.jmcomic_next.lyqs.data.prefs.ThemeMode
 import com.jmcomic_next.lyqs.data.wallpaper.WallpaperMode
 import com.jmcomic_next.lyqs.ui.JmNavHost
+import com.jmcomic_next.lyqs.ui.UiOptions
 import com.jmcomic_next.lyqs.ui.LocalRepository
 import com.jmcomic_next.lyqs.ui.LocalWallpaper
 import com.jmcomic_next.lyqs.ui.LocalWallpaperStore
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
             var dynamicColor by remember { mutableStateOf(prefs.dynamicColor) }
             var readerMode by remember { mutableStateOf(prefs.readerMode) }
             var themeStyle by remember { mutableStateOf(prefs.themeStyle) }
+            var uiOptions by remember { mutableStateOf(prefs.uiOptions) }
             val wallpaper by wallpaperStore.state.collectAsStateWithLifecycle()
 
             val systemDark = isSystemInDarkTheme()
@@ -80,7 +82,12 @@ class MainActivity : ComponentActivity() {
                 LocalWallpaperStore provides wallpaperStore,
                 LocalWallpaper provides wallpaper,
             ) {
-                JmTheme(darkTheme = isDark, dynamicColor = dynamicColor, style = themeStyle) {
+                JmTheme(
+                    darkTheme = isDark,
+                    dynamicColor = dynamicColor,
+                    style = themeStyle,
+                    options = uiOptions,
+                ) {
                     AmbientBackdrop {
                         JmNavHost(
                             readerMode = readerMode,
@@ -104,6 +111,11 @@ class MainActivity : ComponentActivity() {
                                 prefs.themeStyle = it
                             },
                             isDark = isDark,
+                            uiOptions = uiOptions,
+                            onUiOptionsChange = {
+                                uiOptions = it
+                                prefs.uiOptions = it
+                            },
                         )
                     }
                 }
