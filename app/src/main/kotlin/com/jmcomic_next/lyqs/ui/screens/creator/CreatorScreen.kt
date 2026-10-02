@@ -46,6 +46,7 @@ import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.remote.dto.CreatorAuthor
 import com.jmcomic_next.lyqs.data.remote.dto.CreatorWork
 import com.jmcomic_next.lyqs.ui.LocalRepository
+import com.jmcomic_next.lyqs.ui.components.CardSizes
 import com.jmcomic_next.lyqs.ui.components.ErrorBox
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
@@ -318,7 +319,7 @@ fun CreatorScreen(
                     MessageState(title = "没有找到画师", icon = Icons.Filled.Brush, onRetry = { vm.load() })
                 } else {
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 150.dp),
+                        columns = GridCells.Adaptive(minSize = 168.dp),
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(Spacing.lg),
                         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -347,7 +348,7 @@ fun CreatorScreen(
                 MessageState(title = "没有找到作品", icon = Icons.Filled.MenuBook, onRetry = { vm.load() })
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 104.dp),
+                    columns = GridCells.Adaptive(minSize = CardSizes.grid),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(Spacing.lg),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.md),

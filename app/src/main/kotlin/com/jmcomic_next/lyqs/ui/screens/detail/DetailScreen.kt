@@ -671,9 +671,9 @@ private fun DetailContent(
                     contentDescription = detail.name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .width(112.dp)
+                        .width(120.dp)
                         .aspectRatio(3f / 4f)
-                        .clip(RoundedCornerShape(Radius.md)),
+                        .clip(RoundedCornerShape(Radius.lg)),
                 )
                 Column(
                     modifier = Modifier.weight(1f),

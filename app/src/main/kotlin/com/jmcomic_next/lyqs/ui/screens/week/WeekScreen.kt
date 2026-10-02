@@ -36,6 +36,7 @@ import com.jmcomic_next.lyqs.data.remote.dto.ListItem
 import com.jmcomic_next.lyqs.data.remote.dto.WeekCategory
 import com.jmcomic_next.lyqs.data.remote.dto.WeekType
 import com.jmcomic_next.lyqs.ui.LocalRepository
+import com.jmcomic_next.lyqs.ui.components.CardSizes
 import com.jmcomic_next.lyqs.ui.components.ComicCard
 import com.jmcomic_next.lyqs.ui.components.ErrorBox
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
@@ -268,7 +269,7 @@ fun WeekScreen(
             )
 
             else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 104.dp),
+                columns = GridCells.Adaptive(minSize = CardSizes.grid),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(Spacing.lg),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -279,7 +280,7 @@ fun WeekScreen(
                         item = comic,
                         coverUrl = repo.coverUrl(comic),
                         onClick = { onOpenComic(comic.id) },
-                        width = 104.dp,
+                        width = CardSizes.grid,
                     )
                 }
                 item(span = { GridItemSpan(maxLineSpan) }) {

@@ -46,6 +46,7 @@ import com.jmcomic_next.lyqs.data.remote.dto.CategoryNode
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
 import com.jmcomic_next.lyqs.data.remote.dto.SubCategory
 import com.jmcomic_next.lyqs.ui.LocalRepository
+import com.jmcomic_next.lyqs.ui.components.CardSizes
 import com.jmcomic_next.lyqs.ui.components.ComicCard
 import com.jmcomic_next.lyqs.ui.components.ErrorBox
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
@@ -426,7 +427,7 @@ private fun CategoryGrid(
     }
 
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 104.dp),
+        columns = GridCells.Adaptive(minSize = CardSizes.grid),
         state = gridState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(Spacing.lg),
@@ -438,7 +439,7 @@ private fun CategoryGrid(
                 item = comic,
                 coverUrl = repo.coverUrl(comic),
                 onClick = { onOpenComic(comic.id) },
-                width = 104.dp,
+                width = CardSizes.grid,
             )
         }
 

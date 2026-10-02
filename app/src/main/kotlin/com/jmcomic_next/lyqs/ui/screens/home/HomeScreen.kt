@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -42,10 +44,13 @@ import com.jmcomic_next.lyqs.ui.components.ComicCard
 import com.jmcomic_next.lyqs.ui.components.ComicRow
 import com.jmcomic_next.lyqs.ui.components.ErrorBox
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
+import com.jmcomic_next.lyqs.ui.components.GlassSurface
+import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.LoadMoreFooter
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Spacing
+import com.jmcomic_next.lyqs.ui.theme.Radius
 
 /**
  * 首页：推荐分区（横向滚动）+ 最新上架（纵向列表，滚动到底自动续加）。
@@ -142,7 +147,8 @@ private fun HomeContent(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = Spacing.xxl),
-        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+        // 分区之间要拉开：原来 16dp，横向卡片行挨得太近，看不出「这是另一块」
+        verticalArrangement = Arrangement.spacedBy(Spacing.xl),
     ) {
         // 推荐分区
         sections.forEach { section ->
@@ -182,10 +188,20 @@ private fun HomeContent(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
                     contentAlignment = Alignment.Center,
                 ) {
-                    TextButton(onClick = { visibleSections += SECTION_STEP }) {
+                    // 与分区标题旁的「更多」用同一种玻璃胶囊，而不是裸文字按钮
+                    GlassSurface(
+                        level = GlassLevel.Card,
+                        shape = RoundedCornerShape(Radius.pill),
+                        onClick = { visibleSections += SECTION_STEP },
+                    ) {
                         Text(
                             text = "展开更多分区（还有 $remaining 个）",
+                            style = MaterialTheme.typography.labelSmall,
                             color = JmTheme.colors.accent,
+                            modifier = Modifier.padding(
+                                horizontal = Spacing.lg,
+                                vertical = Spacing.sm,
+                            ),
                         )
                     }
                 }
@@ -239,19 +255,35 @@ private const val SECTION_STEP = 6
  */
 @Composable
 private fun SectionTitle(title: String, onMore: (() -> Unit)? = null) {
+    val c = JmTheme.colors
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         Text(
-            text = title,
+            // 服务端把操作提示写进了标题（实测「连载更新→右滑看更多→」），
+            // 直接显示就是把这串箭头当成内容摆出来。这里只取它前面的标题部分。
+            text = title.substringBefore("→").trim().ifEmpty { title },
             style = MaterialTheme.typography.titleLarge,
-            color = JmTheme.colors.text,
+            color = c.text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         if (onMore != null) {
-            TextButton(onClick = onMore) {
-                Text("更多 ›", color = JmTheme.colors.accent)
+            // 玻璃小胶囊而不是裸文字按钮：与卡片同一套表面语言，点击区域也更大
+            GlassSurface(
+                level = GlassLevel.Card,
+                shape = RoundedCornerShape(Radius.pill),
+                onClick = onMore,
+            ) {
+                Text(
+                    text = "更多",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.accent,
+                    modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs),
+                )
             }
         }
     }

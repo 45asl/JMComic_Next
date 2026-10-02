@@ -36,6 +36,23 @@ import com.jmcomic_next.lyqs.ui.theme.Spacing
 private const val COVER_RATIO = 3f / 4f
 
 /**
+ * 卡片尺寸。
+ *
+ * 原来横向行用 108dp：360dp 宽的屏上正好排三张，封面只有拇指盖大，标题挤成两行 11.5sp，
+ * 整屏看下来是「很多很小的方块」。改成 132dp 后一行露出约 2.5 张（第三张切一半），
+ * 既是常见的封面流节奏，也让封面大到能看清画面。
+ *
+ * 网格则用 [grid]：两列、封面约 150dp。
+ */
+object CardSizes {
+    /** 首页推荐区横向滚动的卡片宽度 */
+    val row: Dp = 132.dp
+
+    /** 网格（分类 / 搜索结果格 / 分区更多 / 周刊 / 画师作品）的单格最小宽度 */
+    val grid: Dp = 148.dp
+}
+
+/**
  * 竖版漫画卡片：封面 + 标题 + 作者。用于首页推荐区的横向滚动。
  *
  * 整卡可点（而不是只有封面可点）—— 拇指操作时文字区域往往更好命中。
@@ -46,16 +63,16 @@ fun ComicCard(
     coverUrl: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    width: Dp = 108.dp,
+    width: Dp = CardSizes.row,
 ) {
     val c = JmTheme.colors
     Column(
         modifier = modifier
             .width(width)
-            .clip(RoundedCornerShape(Radius.md))
+            .clip(RoundedCornerShape(Radius.lg))
             .clickable(onClick = onClick)
-            .padding(bottom = Spacing.xs),
-        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+            .padding(bottom = Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         Cover(
             url = coverUrl,
@@ -63,25 +80,29 @@ fun ComicCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(COVER_RATIO)
-                .clip(RoundedCornerShape(Radius.md)),
+                .clip(RoundedCornerShape(Radius.lg)),
         )
-        Text(
-            text = item.name.orEmpty(),
-            style = MaterialTheme.typography.bodyMedium,
-            color = c.text,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = Spacing.xxs),
-        )
-        val sub = item.author ?: item.category?.title
-        if (!sub.isNullOrBlank()) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
+        ) {
             Text(
-                text = sub,
+                text = item.name.orEmpty(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = c.text,
+                // 固定两行：标题有一行有两行的话，下面的作者行会跟着上下跳，
+                // 一整排卡片看起来就是参差不齐的（真机上实测行高 27/33/75px 三种）。
+                minLines = 2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            // 作者行同样占位：没有作者时留空也不塌陷，保持同一排卡片等高
+            Text(
+                text = item.author ?: item.category?.title.orEmpty(),
                 style = MaterialTheme.typography.labelSmall,
                 color = c.textTertiary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = Spacing.xxs),
             )
         }
     }
@@ -106,7 +127,7 @@ fun ComicRow(
         onClick = onClick,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(Spacing.sm),
+            modifier = Modifier.fillMaxWidth().padding(Spacing.md),
             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -114,9 +135,9 @@ fun ComicRow(
                 url = coverUrl,
                 contentDescription = item.name,
                 modifier = Modifier
-                    .width(64.dp)
+                    .width(76.dp)
                     .aspectRatio(COVER_RATIO)
-                    .clip(RoundedCornerShape(Radius.sm)),
+                    .clip(RoundedCornerShape(Radius.md)),
             )
             Column(
                 modifier = Modifier.weight(1f),

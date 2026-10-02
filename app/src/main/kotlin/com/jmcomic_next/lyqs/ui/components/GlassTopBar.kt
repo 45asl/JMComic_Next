@@ -51,7 +51,7 @@ fun GlassTopBar(
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .height(Sizing.appBar)
-                .padding(horizontal = Spacing.sm),
+                .padding(horizontal = Spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             navigation?.invoke()
