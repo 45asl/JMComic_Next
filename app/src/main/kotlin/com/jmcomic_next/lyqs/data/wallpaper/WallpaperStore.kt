@@ -20,6 +20,30 @@ import java.util.Date
 import java.util.Locale
 
 /**
+ * 把 Bing 返回地址里的 `_宽x高` 段改成我们要的尺寸。
+ *
+ * Bing 的图按尺寸段裁剪，实测改段是**真的换图**（请求 `_1080x1920.jpg` 拿回来就是
+ * 1080×1920，不是把横图硬拉长）。这一点很值得做：手机是竖屏，如果直接用返回的
+ * `_1920x1080` 横图，竖屏铺满时会被裁掉两侧很大一块，构图经常就废了。
+ *
+ * 只在能匹配 `_数字x数字` 时改写，其余原样返回 —— 这是别人的地址，猜错了就得整张图加载失败。
+ */
+internal fun bingSizedUrl(url: String, portrait: Boolean): String {
+    val target = if (portrait) "1080x1920" else "1920x1080"
+    // 只改**第一段**尺寸。`Regex.replace` 会把所有匹配都改掉，于是查询串里另一个
+    // 碰巧长得像尺寸的段也会被一起改写 —— 那不是我们要动的地址，改坏了整张图就加载不出来。
+    // 这里用 find + 手工拼接而不是 replaceFirst：后者只收 String 替换式（`$3` 这种），
+    // 拼接能把「保留原扩展名、其余原样不动」写得更直白。
+    val m = BING_SIZE.find(url) ?: return url
+    return url.substring(0, m.range.first) +
+        "_${target}${m.groupValues[3]}" +
+        url.substring(m.range.last + 1)
+}
+
+/** Bing 的尺寸段形如 `_1920x1080.jpg`，只认这一种形状。 */
+private val BING_SIZE = Regex("_(\\d+)x(\\d+)(\\.jpg)", RegexOption.IGNORE_CASE)
+
+/**
  * 壁纸来源。
  *
  * 前四种对应博客 `src/config/wallpapers.ts` 里的模式（博客是
@@ -78,8 +102,9 @@ data class WallpaperState(
  */
 class WallpaperStore(context: Context, private val client: OkHttpClient) {
 
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+
+    private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val _state = MutableStateFlow(read())
     val state: StateFlow<WallpaperState> = _state.asStateFlow()
@@ -186,7 +211,12 @@ class WallpaperStore(context: Context, private val client: OkHttpClient) {
             if (!resp.isSuccessful) throw IllegalStateException("Bing 接口 HTTP ${resp.code}")
             val parsed = JmJson.decodeFromString(BingResponse.serializer(), body)
             fetchedCredit = parsed.copyright
-            listOfNotNull(parsed.url?.takeIf { it.isNotBlank() })
+            val portrait = appContext.resources.configuration.orientation ==
+                android.content.res.Configuration.ORIENTATION_PORTRAIT
+            listOfNotNull(
+                parsed.url?.takeIf { it.isNotBlank() }
+                    ?.let { bingSizedUrl(it, portrait = portrait) },
+            )
         }
     }
 
