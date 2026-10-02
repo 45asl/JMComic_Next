@@ -17,11 +17,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +60,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** 评论长度上限。服务端也有上限，本地先拦住，省一次必然失败的往返。 */
+private const val MAX_COMMENT_LENGTH = 500
+
 data class CommentsUiState(
     val loading: Boolean = true,
     val error: String? = null,
@@ -67,6 +73,13 @@ data class CommentsUiState(
     val loadMoreError: String? = null,
     /** 已经到底。 */
     val exhausted: Boolean = false,
+    /** 发表评论的输入内容。 */
+    val draft: String = "",
+    val sending: Boolean = false,
+    /** 发表 / 删除的结果提示，展示一次后清除。 */
+    val notice: String? = null,
+    /** 当前登录用户的 uid，用来判断哪些评论是自己发的（只有自己能删）。 */
+    val selfUid: String? = null,
 )
 
 class CommentsViewModel(
@@ -74,8 +87,13 @@ class CommentsViewModel(
     private val comicId: String,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(CommentsUiState())
+    private val _state = MutableStateFlow(
+        CommentsUiState(selfUid = repo.auth.member?.uid),
+    )
     val state: StateFlow<CommentsUiState> = _state.asStateFlow()
+
+    /** 是否已登录 —— 发表与删除都要求登录。 */
+    val loggedIn: Boolean get() = repo.auth.isLoggedIn
 
     private var page = 1
 
@@ -136,6 +154,70 @@ class CommentsViewModel(
         }
     }
 
+    fun onDraftChange(text: String) = _state.update { it.copy(draft = text.take(MAX_COMMENT_LENGTH)) }
+
+    fun consumeNotice() = _state.update { it.copy(notice = null) }
+
+    /**
+     * 发表评论。
+     *
+     * 两点边界写在代码里而不是文档里：
+     *  1. **未登录不发**（服务端会回 401 + `{"type":"auth_fail"}`，白跑一次）
+     *  2. 内容长度在本地截断（服务端也有上限，但让它先失败不如本地就拦住）
+     *
+     * 界面只负责把内容提交给服务端，**是否发送由用户自己按下按钮决定** —— 这是真实内容，
+     * 不该由应用替他发。
+     */
+    fun send(onNeedLogin: () -> Unit) {
+        val text = _state.value.draft.trim()
+        if (text.isEmpty() || _state.value.sending) return
+        if (!loggedIn) {
+            onNeedLogin()
+            return
+        }
+        _state.update { it.copy(sending = true, notice = null) }
+        viewModelScope.launch {
+            val result = runCatching { repo.sendComment(comicId, text) }
+            val action = result.getOrNull()
+            val ok = result.isSuccess && (action == null || action.isOk)
+            _state.update {
+                it.copy(
+                    sending = false,
+                    draft = if (ok) "" else it.draft,
+                    notice = when {
+                        ok -> action?.msg ?: "已发表"
+                        else -> "发表失败：${action?.msg ?: result.exceptionOrNull()?.message ?: "未知错误"}"
+                    },
+                )
+            }
+            // 发表成功后重新拉第一页：服务端的排序由它决定，本地插入会与真实顺序不一致
+            if (ok) load()
+        }
+    }
+
+    /** 删除自己发的评论。只有 uid 与当前账号一致时才允许。 */
+    fun delete(comment: CommentItem) {
+        val self = _state.value.selfUid
+        if (self == null || comment.uid != self) return
+        val before = _state.value.comments
+        _state.update { it.copy(comments = it.comments.filterNot { c -> c.commentId == comment.commentId }) }
+        viewModelScope.launch {
+            val result = runCatching { repo.deleteComment(comment.commentId, comicId) }
+            val action = result.getOrNull()
+            val ok = result.isSuccess && (action == null || action.isOk)
+            _state.update {
+                it.copy(
+                    comments = if (ok) it.comments else before,
+                    notice = if (ok) {
+                        "已删除"
+                    } else {
+                        "删除失败：${action?.msg ?: result.exceptionOrNull()?.message ?: "未知错误"}"
+                    },
+                )
+            }
+        }
+    }
+
     /** 续加失败后的重试：先清错误，否则 [loadMore] 会立刻早退。 */
     fun retryLoadMore() {
         _state.update { it.copy(loadMoreError = null) }
@@ -156,6 +238,7 @@ class CommentsViewModel(
 fun CommentsScreen(
     comicId: String,
     onBack: () -> Unit,
+    onNeedLogin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalRepository.current
@@ -181,6 +264,43 @@ fun CommentsScreen(
             },
         )
 
+        // 发表评论的输入行。
+        // 说明写在占位符里而不是弹窗：这是**会发到站点上的真实内容**，
+        // 用户按下发送前就应该知道这一点。
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = state.draft,
+                onValueChange = { vm.onDraftChange(it) },
+                modifier = Modifier.weight(1f),
+                placeholder = {
+                    Text(
+                        text = if (state.selfUid != null) "说点什么（会公开发布）" else "登录后可发表评论",
+                        color = c.textTertiary,
+                    )
+                },
+                maxLines = 3,
+                enabled = !state.sending,
+            )
+            TextButton(
+                onClick = { vm.send(onNeedLogin) },
+                enabled = !state.sending && state.draft.isNotBlank(),
+            ) {
+                Text(if (state.sending) "发送中…" else "发送", color = c.accent)
+            }
+        }
+
+        state.notice?.let { notice ->
+            Text(
+                text = notice,
+                style = MaterialTheme.typography.labelSmall,
+                color = c.accent,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.xs),
+            )
+        }
+
         when {
             state.loading -> LoadingBox()
 
@@ -199,7 +319,17 @@ fun CommentsScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
                 items(state.comments, key = { it.commentId }) { comment ->
-                    CommentCard(comment, repo)
+                    CommentCard(
+                        comment = comment,
+                        repo = repo,
+                        // 只有自己发的才有删除入口：服务端也只会接受本人的删除请求，
+                        // 给别人的评论配一个必然失败的按钮只会让人误以为能删
+                        onDelete = if (state.selfUid != null && comment.uid == state.selfUid) {
+                            { vm.delete(comment) }
+                        } else {
+                            null
+                        },
+                    )
                 }
                 item(key = "footer") {
                     LoadMoreFooter(
@@ -216,7 +346,11 @@ fun CommentsScreen(
 }
 
 @Composable
-private fun CommentCard(comment: CommentItem, repo: JmRepository) {
+private fun CommentCard(
+    comment: CommentItem,
+    repo: JmRepository,
+    onDelete: (() -> Unit)? = null,
+) {
     val c = JmTheme.colors
     GlassSurface(
         modifier = Modifier.fillMaxWidth(),
@@ -255,6 +389,19 @@ private fun CommentCard(comment: CommentItem, repo: JmRepository) {
                             style = MaterialTheme.typography.labelSmall,
                             color = c.textTertiary,
                         )
+                    }
+                    onDelete?.let { delete ->
+                        IconButton(
+                            onClick = delete,
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.DeleteOutline,
+                                contentDescription = "删除这条评论",
+                                tint = c.textTertiary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
                     }
                 }
             }

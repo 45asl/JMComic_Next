@@ -18,9 +18,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -70,6 +75,7 @@ import com.jmcomic_next.lyqs.ui.screens.favorites.FolderPickerDialog
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
+import com.jmcomic_next.lyqs.ui.screens.tags.TagPickerDialog
 import com.jmcomic_next.lyqs.ui.theme.Spacing
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -93,6 +99,17 @@ data class DetailUiState(
     val folders: List<FavoriteFolder> = emptyList(),
     /** 阅读入口。为空只表示详情还没加载出来。 */
     val readEntry: ReadEntry? = null,
+    /**
+     * 是否已追更。
+     *
+     * 与收藏不同，这个状态**没有随详情一起下发**，得单独问一次
+     * （`album_sertracking?id=`，且要登录才有意义）。
+     */
+    val tracked: Boolean = false,
+    /** 追更 / 下载 / 标签收藏的结果提示。 */
+    val actionNotice: String? = null,
+    /** 标签收藏选择器是否打开。 */
+    val tagPickerVisible: Boolean = false,
     /** 点赞动作的结果提示。 */
     val likeNotice: String? = null,
 )
@@ -215,8 +232,106 @@ class DetailViewModel(
                     error = if (detail == null) result.exceptionOrNull()?.message else null,
                 )
             }
+            // 追更状态要单独问一次（详情里没有这个字段），未登录时不必问
+            if (fresh != null && repo.auth.isLoggedIn) refreshTracking()
         }
     }
+
+    /**
+     * 查询追更状态。
+     *
+     * 失败就保持「未追更」而不提示：这只是页面上的一个标记，
+     * 为它弹错误反而会让人以为详情页出了问题。
+     */
+    private fun refreshTracking() {
+        viewModelScope.launch {
+            val tracked = runCatching { repo.isTracked(comicId) }.getOrDefault(false)
+            _state.update { it.copy(tracked = tracked) }
+        }
+    }
+
+    /**
+     * 切换追更。
+     *
+     * 与收藏同一套路：**同一个 POST 既是追更也是取关**，结果以服务端返回的文案为准，
+     * 界面状态跟着服务端走而不是本地取反。
+     */
+    fun toggleTracking(onNeedLogin: (String) -> Unit) {
+        if (!repo.auth.isLoggedIn) {
+            onNeedLogin("追更需要登录")
+            return
+        }
+        val before = _state.value.tracked
+        _state.update { it.copy(tracked = !before) }
+        viewModelScope.launch {
+            val result = runCatching { repo.toggleTracking(comicId) }
+            val action = result.getOrNull()
+            val ok = result.isSuccess && (action == null || action.isOk)
+            _state.update {
+                it.copy(
+                    // 失败就退回原状态，并把服务端的话原样显示
+                    tracked = if (ok) it.tracked else before,
+                    actionNotice = action?.msg ?: result.exceptionOrNull()?.message
+                        ?: if (ok) "已更新追更状态" else "追更失败",
+                )
+            }
+        }
+    }
+
+    /** 打开 / 关闭标签收藏选择器。 */
+    fun setTagPicker(visible: Boolean) = _state.update { it.copy(tagPickerVisible = visible) }
+
+    /** 把选中的标签加进收藏（一次提交一串，与官方一致）。 */
+    fun favoriteTags(tags: List<String>) {
+        if (tags.isEmpty()) {
+            setTagPicker(false)
+            return
+        }
+        viewModelScope.launch {
+            val result = runCatching { repo.updateFavoriteTags("add", tags) }
+            val action = result.getOrNull()
+            _state.update {
+                it.copy(
+                    tagPickerVisible = false,
+                    actionNotice = action?.msg ?: result.exceptionOrNull()?.message
+                        ?: "已收藏 ${tags.size} 个标签",
+                )
+            }
+        }
+    }
+
+    /**
+     * 取整部作品的下载链接。
+     *
+     * 需要登录，而且**失败不是 401**：实测未登录时是 HTTP 200 + `{"status":"0","msg":"請先登入"}`，
+     * 所以判断落在 `status` 上；把这种响应当成功会给出一个空链接。
+     */
+    fun requestDownload(onNeedLogin: (String) -> Unit, onReady: (String, String) -> Unit) {
+        if (!repo.auth.isLoggedIn) {
+            onNeedLogin("下载需要登录")
+            return
+        }
+        viewModelScope.launch {
+            val result = runCatching { repo.albumDownload(comicId) }
+            val payload = result.getOrNull()
+            when {
+                result.isFailure -> _state.update {
+                    it.copy(actionNotice = "获取下载地址失败：${result.exceptionOrNull()?.message}")
+                }
+
+                payload == null || !payload.isOk -> _state.update {
+                    it.copy(actionNotice = payload?.msg ?: "这个作品暂时不能下载")
+                }
+
+                else -> {
+                    _state.update { it.copy(actionNotice = "已开始下载${payload.title?.let { t -> "：$t" }.orEmpty()}") }
+                    onReady(payload.downloadUrl.orEmpty(), payload.title.orEmpty())
+                }
+            }
+        }
+    }
+
+    fun consumeActionNotice() = _state.update { it.copy(actionNotice = null) }
 
     fun consumeFavoriteNotice() = _state.update { it.copy(favoriteNotice = null) }
 
@@ -338,6 +453,39 @@ fun DetailScreen(
 ) {
     val repo = LocalRepository.current
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    /**
+     * 拿到下载地址后交给**系统下载器**（DownloadManager）。
+     *
+     * 不自己写下载：系统那个天然支持后台、断点续传、通知栏进度，而且存到公共下载目录
+     * 不需要任何存储权限。这里只负责把 URL 与文件名交出去。
+     */
+    val onDownloadReady: (String, String) -> Unit = { url, title ->
+        runCatching {
+            val fileName = title.ifBlank { "jmcomic-$comicId" }
+                .replace(Regex("""[/\\:*?"<>|]"""), "_")
+                .take(80)
+            val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
+                .setTitle(fileName)
+                .setNotificationVisibility(
+                    android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+                )
+                .setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, fileName)
+            val manager = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE)
+                as android.app.DownloadManager
+            manager.enqueue(request)
+        }.onFailure {
+            // 系统下载器不可用（极少数定制系统）时退回浏览器，至少让用户能拿到文件
+            runCatching {
+                context.startActivity(
+                    android.content.Intent(
+                        android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse(url),
+                    )
+                )
+            }
+        }
+    }
     val readProgress = remember(context) { ReadProgressStore(context) }
     val vm: DetailViewModel = viewModel(
         key = "detail-$comicId",
@@ -377,6 +525,22 @@ fun DetailScreen(
             },
             actions = {
                 state.detail?.let { detail ->
+                    // 追更：状态要单独查（详情里没有这个字段），因此未登录时不显示，
+                    // 免得给出一个必然失败、还得多跳一次登录页的按钮
+                    if (repo.auth.isLoggedIn) {
+                        IconButton(onClick = { vm.toggleTracking(onNeedLogin) }) {
+                            Icon(
+                                imageVector = if (state.tracked) {
+                                    Icons.Filled.NotificationsActive
+                                } else {
+                                    Icons.Filled.NotificationsNone
+                                },
+                                contentDescription = if (state.tracked) "取消追更" else "追更",
+                                tint = if (state.tracked) c.accent else c.textSecondary,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = { vm.toggleFavorite(onNeedLogin) },
                         enabled = !state.togglingFavorite,
@@ -396,7 +560,7 @@ fun DetailScreen(
             },
         )
 
-        (state.favoriteNotice ?: state.likeNotice)?.let { notice ->
+        (state.actionNotice ?: state.favoriteNotice ?: state.likeNotice)?.let { notice ->
             GlassSurface(
                 modifier = Modifier.fillMaxWidth(),
                 level = GlassLevel.Card,
@@ -426,12 +590,22 @@ fun DetailScreen(
                 onReadChapter = onReadChapter,
                 onOpenTag = onOpenTag,
                 onOpenComments = onOpenComments,
+                onDownload = { vm.requestDownload(onNeedLogin, onDownloadReady) },
+                onOpenTagPicker = { vm.setTagPicker(true) },
             )
 
             // 兜底：加载结束却没有内容也没有错误（例如异常没有 message）时，
             // 之前这里什么都不渲染，用户面对的是一张只有顶栏的白屏，且没有重试入口
             else -> ErrorBox(message = "没能加载出这部作品", onRetry = { vm.load() })
         }
+    }
+
+    if (state.tagPickerVisible) {
+        TagPickerDialog(
+            tags = state.detail?.tags.orEmpty(),
+            onDismiss = { vm.setTagPicker(false) },
+            onConfirm = { tags -> vm.favoriteTags(tags) },
+        )
     }
 
     if (state.folderPickerVisible) {
@@ -456,6 +630,8 @@ private fun DetailContent(
     onOpenTag: (String) -> Unit,
     onLike: () -> Unit,
     onOpenComments: () -> Unit,
+    onDownload: () -> Unit,
+    onOpenTagPicker: () -> Unit,
 ) {
     val c = JmTheme.colors
     // 默认停在第一章所在的那一页目录
@@ -613,6 +789,69 @@ private fun DetailContent(
                         color = c.textSecondary,
                         modifier = Modifier.padding(Spacing.lg),
                     )
+                }
+            }
+        }
+
+        // 下载：官方是独立页面（`/comic/detail/download`）并配了一段下载说明与验证码，
+        // 这里做成一个动作 —— 拿到服务端给的 download_url 后交给系统下载器，
+        // 不在应用里另造一个下载管理器（系统那个能断点续传、能后台、能通知）。
+        item(key = "download") {
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
+                level = GlassLevel.Card,
+                onClick = onDownload,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Download,
+                        contentDescription = null,
+                        tint = c.accent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = "下载整部作品",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.text,
+                        modifier = Modifier.weight(1f).padding(start = Spacing.sm),
+                    )
+                    Text(
+                        text = "交给系统下载器",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = c.textTertiary,
+                    )
+                }
+            }
+        }
+
+        // 标签收藏：把这部作品的标签加进「我的 → 标签收藏」
+        if (detail.tags.isNotEmpty()) {
+            item(key = "tag-favorite") {
+                GlassSurface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
+                    level = GlassLevel.Card,
+                    onClick = onOpenTagPicker,
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.BookmarkAdd,
+                            contentDescription = null,
+                            tint = c.accent,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = "收藏这些标签",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = c.text,
+                            modifier = Modifier.weight(1f).padding(start = Spacing.sm),
+                        )
+                    }
                 }
             }
         }

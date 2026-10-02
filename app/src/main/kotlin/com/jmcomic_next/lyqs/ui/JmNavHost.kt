@@ -49,6 +49,7 @@ import com.jmcomic_next.lyqs.ui.screens.more.MoreListScreen
 import com.jmcomic_next.lyqs.ui.screens.profile.ProfileScreen
 import com.jmcomic_next.lyqs.ui.screens.reader.ReaderScreen
 import com.jmcomic_next.lyqs.ui.screens.search.SearchScreen
+import com.jmcomic_next.lyqs.ui.screens.tags.TagFavoritesScreen
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 
 /**
@@ -79,6 +80,8 @@ private const val ROUTE_FAVORITES = "favorites"
 private const val ROUTE_HISTORY = "history"
 private const val ROUTE_COMMENTS = "comments/{aid}"
 private const val ROUTE_WEEK = "week"
+private const val ROUTE_TRACKING = "tracking"
+private const val ROUTE_TAGS = "tags"
 private const val ROUTE_CREATOR = "creator"
 private const val ROUTE_CREATOR_WORK = "creator/work/{id}"
 
@@ -238,6 +241,8 @@ fun JmNavHost(
                     },
                     onOpenFavorites = { nav.push(ROUTE_FAVORITES) },
                     onOpenHistory = { nav.push(ROUTE_HISTORY) },
+                    onOpenTracking = { nav.push(ROUTE_TRACKING) },
+                    onOpenTags = { nav.push(ROUTE_TAGS) },
                 )
             }
 
@@ -299,6 +304,24 @@ fun JmNavHost(
                 CommentsScreen(
                     comicId = backStack.arguments?.getString("aid").orEmpty(),
                     onBack = { nav.popBackStack() },
+                    onNeedLogin = { nav.push(authFor("发表评论需要登录")) },
+                )
+            }
+
+            composable(ROUTE_TRACKING) {
+                AccountListScreen(
+                    kind = AccountListKind.Tracking,
+                    onBack = { nav.popBackStack() },
+                    onOpenComic = { id -> nav.push("detail/$id") },
+                    onLogin = { nav.push(authFor("追更需要登录")) },
+                )
+            }
+
+            composable(ROUTE_TAGS) {
+                TagFavoritesScreen(
+                    onBack = { nav.popBackStack() },
+                    onLogin = { nav.push(authFor("标签收藏需要登录")) },
+                    onOpenTag = { tag -> nav.push(searchFor(tag)) },
                 )
             }
 

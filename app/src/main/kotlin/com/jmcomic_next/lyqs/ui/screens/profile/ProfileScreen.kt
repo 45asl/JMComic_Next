@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -71,6 +73,8 @@ fun ProfileScreen(
     onLogout: () -> Unit,
     onOpenFavorites: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenTracking: () -> Unit,
+    onOpenTags: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalRepository.current
@@ -92,6 +96,8 @@ fun ProfileScreen(
                     onLogout = onLogout,
                     onOpenFavorites = onOpenFavorites,
                     onOpenHistory = onOpenHistory,
+                    onOpenTracking = onOpenTracking,
+                    onOpenTags = onOpenTags,
                 )
             }
             item { AppearanceCard(themeMode, onThemeModeChange, dynamicColor, onDynamicColorChange) }
@@ -111,6 +117,8 @@ private fun AccountCard(
     onLogout: () -> Unit,
     onOpenFavorites: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenTracking: () -> Unit,
+    onOpenTags: () -> Unit,
 ) {
     val c = JmTheme.colors
     SettingCard(title = "账号") {
@@ -153,6 +161,10 @@ private fun AccountCard(
             ) {
                 EntryButton("我的收藏", Icons.Filled.BookmarkBorder, onOpenFavorites)
                 EntryButton("观看历史", Icons.Filled.History, onOpenHistory)
+                // 追更与标签收藏都在服务端，且都有上限（追更 500 / 标签 50），
+                // 因此放在账号卡片里与收藏、历史并列
+                EntryButton("我的追更", Icons.Filled.NotificationsNone, onOpenTracking)
+                EntryButton("标签收藏", Icons.Filled.BookmarkAdd, onOpenTags)
             }
 
             Row(
