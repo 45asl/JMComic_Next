@@ -19,6 +19,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
@@ -112,6 +114,9 @@ data class DetailUiState(
     val actionNotice: String? = null,
     /** 标签收藏选择器是否打开。 */
     val tagPickerVisible: Boolean = false,
+    /** 屏蔽命中情况：非空表示这部作品含被屏蔽的标签 / 作者。 */
+    val blockedTags: List<String> = emptyList(),
+    val blockedAuthor: Boolean = false,
     /** 点赞动作的结果提示。 */
     val likeNotice: String? = null,
 )
@@ -236,6 +241,16 @@ class DetailViewModel(
             }
             // 追更状态要单独问一次（详情里没有这个字段），未登录时不必问
             if (fresh != null && repo.auth.isLoggedIn) refreshTracking()
+            // 屏蔽命中：作品自带的标签与作者对上本地屏蔽名单时，页面顶部给出提示
+            if (fresh != null) {
+                val r = repo.blockStore?.snapshot()
+                _state.update {
+                    it.copy(
+                        blockedTags = r?.hitsTags(fresh).orEmpty(),
+                        blockedAuthor = r?.hitsAuthor(fresh) == true,
+                    )
+                }
+            }
         }
     }
 
@@ -350,6 +365,48 @@ class DetailViewModel(
     }
 
     fun consumeActionNotice() = _state.update { it.copy(actionNotice = null) }
+
+    /**
+     * 屏蔽一个标签 / 一个关键词（作者）。
+     *
+     * 加入名单后**当场把提示状态也更新掉**，不必等下一次进详情页 ——
+     * 用户点了「屏蔽」却看不到任何变化，会以为没生效。
+     */
+    fun blockTag(tag: String) {
+        repo.blockStore?.addTag(tag)
+        _state.update {
+            it.copy(
+                blockedTags = (it.blockedTags + tag).distinct(),
+                actionNotice = "已屏蔽标签「$tag」",
+            )
+        }
+    }
+
+    fun blockAuthor(author: String) {
+        repo.blockStore?.addWord(author)
+        _state.update { it.copy(blockedAuthor = true, actionNotice = "已屏蔽作者「$author」") }
+    }
+
+    /** 取消屏蔽（从提示条上点「不再屏蔽」）。 */
+    fun unblockTag(tag: String) {
+        repo.blockStore?.removeTag(tag)
+        _state.update {
+            it.copy(
+                blockedTags = it.blockedTags - tag,
+                actionNotice = "已取消屏蔽「$tag」",
+            )
+        }
+    }
+
+    fun unblockAuthor() {
+        val authors = _state.value.detail?.author.orEmpty()
+        val rules = repo.blockStore?.snapshot()
+        authors.forEach { author ->
+            rules?.words?.firstOrNull { author.contains(it, ignoreCase = true) }
+                ?.let { repo.blockStore?.removeWord(it) }
+        }
+        _state.update { it.copy(blockedAuthor = false, actionNotice = "已取消屏蔽该作者") }
+    }
 
     fun consumeFavoriteNotice() = _state.update { it.copy(favoriteNotice = null) }
 
@@ -610,6 +667,11 @@ fun DetailScreen(
                 onOpenComments = onOpenComments,
                 onDownload = { vm.requestDownload(onNeedLogin, onDownloadReady) },
                 onOpenTagPicker = { vm.setTagPicker(true) },
+                blockedTags = state.blockedTags,
+                blockedAuthor = state.blockedAuthor,
+                onBlockTag = { vm.blockTag(it) },
+                onBlockAuthor = { vm.blockAuthor(it) },
+                onUnblockTag = { vm.unblockTag(it) },
             )
 
             // 兜底：加载结束却没有内容也没有错误（例如异常没有 message）时，
@@ -650,6 +712,12 @@ private fun DetailContent(
     onOpenComments: () -> Unit,
     onDownload: () -> Unit,
     onOpenTagPicker: () -> Unit,
+    /** 命中本地屏蔽规则的标签与作者：页面顶部据此给提示，标签也据此画成删除线。 */
+    blockedTags: List<String>,
+    blockedAuthor: Boolean,
+    onBlockTag: (String) -> Unit,
+    onBlockAuthor: (String) -> Unit,
+    onUnblockTag: (String) -> Unit,
 ) {
     val c = JmTheme.colors
     // 默认停在第一章所在的那一页目录
@@ -690,9 +758,15 @@ private fun DetailContent(
                         Text(
                             text = "作者：" + detail.author.joinToString("、"),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = c.textSecondary,
+                            color = if (blockedAuthor) c.textTertiary else c.textSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            // 长按作者即屏蔽（加入关键词名单）。与标签用同一套手势，
+                            // 免得为「屏蔽」再塞一排按钮把详情页撑长
+                            modifier = Modifier.combinedClickable(
+                                onClick = {},
+                                onLongClick = { onBlockAuthor(detail.author.first()) },
+                            ),
                         )
                     }
                     Text(
@@ -780,15 +854,71 @@ private fun DetailContent(
             }
         }
 
-        // 标签
+        // 标签：点=搜索，长按=屏蔽（提示写在右上角那句里，避免藏一个发现不了的手势）
         if (detail.tags.isNotEmpty()) {
             item(key = "tags") {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = Spacing.lg),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "标签：点开搜索，长按屏蔽",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = c.textTertiary,
+                        )
+                    }
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = Spacing.lg),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    ) {
+                        items(detail.tags) { tag ->
+                            CategoryChip(
+                                text = tag,
+                                onClick = { onOpenTag(tag) },
+                                onLongClick = { onBlockTag(tag) },
+                                blocked = blockedTags.any { it.equals(tag, ignoreCase = true) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 命中屏蔽规则时的提示条：不遮住内容，只说明「为什么你可能不想看」
+        if (blockedTags.isNotEmpty() || blockedAuthor) {
+            item(key = "blocked") {
+                GlassSurface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
+                    level = GlassLevel.Card,
                 ) {
-                    items(detail.tags) { tag ->
-                        CategoryChip(tag, onClick = { onOpenTag(tag) })
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Block,
+                            contentDescription = null,
+                            tint = c.textTertiary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = buildString {
+                                append("按你的屏蔽规则")
+                                if (blockedAuthor) append("：已屏蔽作者")
+                                if (blockedTags.isNotEmpty()) {
+                                    append("：含「${blockedTags.joinToString("、")}」")
+                                }
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = c.textSecondary,
+                            modifier = Modifier.weight(1f).padding(start = Spacing.sm),
+                        )
+                        blockedTags.firstOrNull()?.let { tag ->
+                            TextButton(onClick = { onUnblockTag(tag) }) {
+                                Text("不再屏蔽", color = c.accent)
+                            }
+                        }
                     }
                 }
             }

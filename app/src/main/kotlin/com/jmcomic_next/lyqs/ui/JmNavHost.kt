@@ -49,6 +49,7 @@ import com.jmcomic_next.lyqs.ui.screens.more.MoreListScreen
 import com.jmcomic_next.lyqs.ui.screens.profile.ProfileScreen
 import com.jmcomic_next.lyqs.ui.screens.reader.ReaderScreen
 import com.jmcomic_next.lyqs.ui.screens.search.SearchScreen
+import com.jmcomic_next.lyqs.ui.screens.settings.BlockSettingsScreen
 import com.jmcomic_next.lyqs.ui.screens.tags.TagFavoritesScreen
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 
@@ -84,6 +85,7 @@ private const val ROUTE_TRACKING = "tracking"
 private const val ROUTE_TAGS = "tags"
 private const val ROUTE_CREATOR = "creator"
 private const val ROUTE_CREATOR_WORK = "creator/work/{id}"
+private const val ROUTE_BLOCK = "block"
 
 /**
  * 「更多」列表：首页某个推荐分区的完整列表，或连载更新表（分区 id 26）。
@@ -243,6 +245,7 @@ fun JmNavHost(
                     onOpenHistory = { nav.push(ROUTE_HISTORY) },
                     onOpenTracking = { nav.push(ROUTE_TRACKING) },
                     onOpenTags = { nav.push(ROUTE_TAGS) },
+                    onOpenBlock = { nav.push(ROUTE_BLOCK) },
                 )
             }
 
@@ -323,6 +326,10 @@ fun JmNavHost(
                     onLogin = { nav.push(authFor("标签收藏需要登录")) },
                     onOpenTag = { tag -> nav.push(searchFor(tag)) },
                 )
+            }
+
+            composable(ROUTE_BLOCK) {
+                BlockSettingsScreen(onBack = { nav.popBackStack() })
             }
 
             composable(ROUTE_HISTORY) {

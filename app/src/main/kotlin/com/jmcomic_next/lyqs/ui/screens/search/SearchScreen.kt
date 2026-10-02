@@ -87,6 +87,13 @@ data class SearchUiState(
     val history: List<String> = emptyList(),
     /** 结果总数（服务端以字符串下发）。0 表示服务端没给。 */
     val total: Int = 0,
+    /**
+     * 被屏蔽规则滤掉、因而**没有显示**的条数（累计）。
+     *
+     * 必须显示出来：否则「共 1458 条结果」配上一屏不到十条、翻两页就到底，
+     * 看起来就是分页坏了。数字对不上时要能说清是屏蔽吃掉的。
+     */
+    val hidden: Int = 0,
     val loadingMore: Boolean = false,
     /** 续加失败的原因。与 [error] 分开：失败若写进 [error]，页脚会反复自动重试。 */
     val loadMoreError: String? = null,
@@ -218,6 +225,7 @@ class SearchViewModel(
                     searched = true,
                     results = items,
                     total = result.getOrNull()?.page?.total ?: 0,
+                    hidden = result.getOrNull()?.page?.hidden ?: 0,
                     redirectAid = result.getOrNull()?.redirectAid,
                     error = result.exceptionOrNull()?.message,
                 )
@@ -276,6 +284,8 @@ class SearchViewModel(
                     loadingMore = false,
                     results = merged,
                     total = result.getOrNull()?.page?.total ?: prev.total,
+                    // 累计：这一页被滤掉几条，之前几页也要算上
+                    hidden = prev.hidden + if (ok) result.getOrNull()?.page?.hidden ?: 0 else 0,
                     loadMoreError = if (ok) null else result.exceptionOrNull()?.message,
                     // 成功但本页为空 = 到底了
                     exhausted = ok && more.isEmpty(),
@@ -452,7 +462,10 @@ fun SearchScreen(
                 if (state.total > 0) {
                     item(key = "count") {
                         Text(
-                            text = "共 ${state.total} 条结果",
+                            text = buildString {
+                                append("共 ${state.total} 条结果")
+                                if (state.hidden > 0) append(" · 已按屏蔽规则隐藏 ${state.hidden} 条")
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = c.textTertiary,
                         )

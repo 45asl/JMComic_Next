@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.History
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jmcomic_next.lyqs.BuildConfig
+import com.jmcomic_next.lyqs.data.BlockRules
 import com.jmcomic_next.lyqs.data.prefs.ReaderMode
 import com.jmcomic_next.lyqs.data.prefs.ThemeMode
 import com.jmcomic_next.lyqs.data.remote.AdBlocker
@@ -75,6 +77,7 @@ fun ProfileScreen(
     onOpenHistory: () -> Unit,
     onOpenTracking: () -> Unit,
     onOpenTags: () -> Unit,
+    onOpenBlock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalRepository.current
@@ -101,6 +104,7 @@ fun ProfileScreen(
                 )
             }
             item { AppearanceCard(themeMode, onThemeModeChange, dynamicColor, onDynamicColorChange) }
+            item { BlockCard(onOpenBlock) }
             item { ReadingCard(readerMode, onReaderModeChange) }
             item { PrivacyCard() }
             item { AboutCard() }
@@ -213,6 +217,60 @@ private fun RowScope.EntryButton(label: String, icon: ImageVector, onClick: () -
                 modifier = Modifier.size(18.dp),
             )
             Text(label, style = MaterialTheme.typography.bodyMedium, color = c.text)
+        }
+    }
+}
+
+/**
+ * 内容屏蔽。
+ *
+ * 三份名单存在本地，命中即隐藏 —— 屏蔽只作用于本机，不影响账号，也不影响官方客户端。
+ * 这里只做汇总与入口，增删都在 [com.jmcomic_next.lyqs.ui.screens.settings.BlockSettingsScreen]。
+ */
+@Composable
+private fun BlockCard(onOpenBlock: () -> Unit) {
+    val c = JmTheme.colors
+    val store = LocalRepository.current.blockStore
+    val rules by store?.state?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf(BlockRules()) }
+    val total = rules.words.size + rules.categories.size + rules.tags.size
+
+    SettingCard(title = "内容屏蔽") {
+        InfoRow("关键词", "${rules.words.size} 条")
+        InfoRow("分类", "${rules.categories.size} 条")
+        InfoRow("标签", "${rules.tags.size} 条")
+        Text(
+            text = if (total == 0) {
+                "还没有屏蔽任何内容。可以按作品名、作者、分类或标签屏蔽，命中即从列表中隐藏。"
+            } else {
+                "已生效 $total 条规则。列表里看不到的作品可能正是被它们隐藏的。"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = c.textTertiary,
+            modifier = Modifier.padding(top = Spacing.sm),
+        )
+        GlassSurface(
+            modifier = Modifier.fillMaxWidth().padding(top = Spacing.md),
+            level = GlassLevel.Card,
+            onClick = onOpenBlock,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Block,
+                    contentDescription = null,
+                    tint = c.accent,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = "管理屏蔽名单",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.text,
+                )
+            }
         }
     }
 }

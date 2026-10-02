@@ -288,6 +288,13 @@ data class AppShunt(
 data class PagedList(
     val items: List<ListItem> = emptyList(),
     val total: Int = 0,
+    /**
+     * 被屏蔽规则挡掉的条数。
+     *
+     * 过滤发生在数据层（见 [com.jmcomic_next.lyqs.data.JmRepository]），
+     * 界面拿这个数就能说明「列表为什么比服务端说的少」，而不是让人以为服务端少了数据。
+     */
+    val hidden: Int = 0,
 ) {
     val hasTotal: Boolean get() = total > 0
 }

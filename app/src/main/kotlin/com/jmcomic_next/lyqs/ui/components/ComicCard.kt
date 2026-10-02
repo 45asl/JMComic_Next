@@ -2,6 +2,7 @@ package com.jmcomic_next.lyqs.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -172,19 +174,33 @@ fun CategoryChip(
     text: String,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    /** 长按动作。详情页用「点=搜索，长按=屏蔽」，避免为屏蔽再塞一排按钮。 */
+    onLongClick: (() -> Unit)? = null,
+    /** 已被屏蔽：弱化显示并画删除线，一眼能看出「这条规则已生效」。 */
+    blocked: Boolean = false,
 ) {
     val c = JmTheme.colors
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(Radius.xs))
-            .background(c.accentSoft)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .background(if (blocked) c.surfaceSunken else c.accentSoft)
+            .then(
+                if (onClick != null || onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = { onClick?.invoke() },
+                        onLongClick = onLongClick,
+                    )
+                } else {
+                    Modifier
+                }
+            )
             .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
-            color = c.accent,
+            color = if (blocked) c.textTertiary else c.accent,
+            textDecoration = if (blocked) TextDecoration.LineThrough else null,
             maxLines = 1,
         )
     }

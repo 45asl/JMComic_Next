@@ -1,6 +1,7 @@
 package com.jmcomic_next.lyqs.data
 
 import com.jmcomic_next.lyqs.data.crypto.JmCrypto
+import com.jmcomic_next.lyqs.data.prefs.BlockStore
 import com.jmcomic_next.lyqs.data.remote.Envelope
 import com.jmcomic_next.lyqs.data.remote.JmException
 import com.jmcomic_next.lyqs.data.remote.JmHostDiscovery
@@ -83,10 +84,29 @@ data class SearchResult(
 class JmRepository(
     private val remote: JmRemote,
     private val authStore: AuthStore,
+    /** 屏蔽名单。由 App 容器注入，与账号存储同样是「本地状态」。 */
+    val blockStore: BlockStore? = null,
 ) {
 
     /** 账号会话状态，供界面读取登录态与会员信息。 */
     val auth: AuthStore get() = authStore
+
+    /** 当前屏蔽规则（无存储时视为空规则）。 */
+    private fun rules(): BlockRules = blockStore?.snapshot() ?: BlockRules()
+
+    /**
+     * 按屏蔽规则过滤一页列表。
+     *
+     * **放在数据层而不是各页面**：列表出口有十来处（最新/搜索/分类/分区更多/周刊/追更/
+     * 收藏/历史/随机推荐…），任何一处忘了过滤都会表现成「屏蔽没生效」，而这类漏网很难被发现。
+     * 在这里统一收口，页面只需要显示 [PagedList.hidden]。
+     */
+    private fun PagedList.blockFiltered(): PagedList {
+        val r = rules()
+        if (r.isEmpty || items.isEmpty()) return this
+        val kept = items.filterNot { r.hides(it) }
+        return if (kept.size == items.size) this else copy(items = kept, hidden = items.size - kept.size)
+    }
 
     private val session: JmSession get() = remote.session
 
@@ -152,10 +172,13 @@ class JmRepository(
      * 返回的是**分区**列表（每个分区带标题和一串漫画），不是扁平列表 ——
      * 依据 `InterFace.ts` 的 `PromoteResponse`。
      */
-    suspend fun promote(): List<PromoteSection> = remote.get(
-        JmPaths.PROMOTE,
-        ListSerializer(PromoteSection.serializer()),
-    )
+    suspend fun promote(): List<PromoteSection> {
+        val sections = remote.get(JmPaths.PROMOTE, ListSerializer(PromoteSection.serializer()))
+        val r = rules()
+        if (r.isEmpty) return sections
+        // 分区里的内容同样过滤；分区本身即使被清空也留着，避免首页区块顺序跳动
+        return sections.map { section -> section.copy(content = section.content.filterNot { r.hides(it) }) }
+    }
 
     /**
      * 首页最新，分页。
@@ -171,13 +194,13 @@ class JmRepository(
         when (el) {
             is JsonArray -> PagedList(
                 items = JmJson.decodeFromJsonElement(ListSerializer(ListItem.serializer()), el),
-            )
+            ).blockFiltered()
             is JsonObject -> PagedList(
                 items = el["list"]?.takeIf { it is JsonArray }?.let {
                     JmJson.decodeFromJsonElement(ListSerializer(ListItem.serializer()), it)
                 } ?: emptyList(),
                 total = el["total"].asIntOrZero(),
-            )
+            ).blockFiltered()
             else -> PagedList()
         }
     }
@@ -212,7 +235,7 @@ class JmRepository(
         // 搜索的 total 是字符串，而 latest 的是数字 —— 各按各的形态取，统一成 Int。
         // redirect_aid 非空表示「按作品编号精确命中」，应当直接打开详情而不是展示列表。
         return SearchResult(
-            page = PagedList(payload.content, payload.total?.toIntOrNull() ?: 0),
+            page = PagedList(payload.content, payload.total?.toIntOrNull() ?: 0).blockFiltered(),
             redirectAid = payload.redirectAid?.takeIf { it.isNotBlank() },
         )
     }
@@ -340,7 +363,10 @@ class JmRepository(
             put("o", order)
             folderId?.takeIf { it.isNotBlank() }?.let { put("folder_id", it) }
         },
-    )
+    ).let { payload ->
+        val r = rules()
+        if (r.isEmpty) payload else payload.copy(list = payload.list.filterNot { r.hides(it) })
+    }
 
     /**
      * 收藏夹编辑。
@@ -368,7 +394,10 @@ class JmRepository(
         JmPaths.WATCH_LIST,
         HistoryPayload.serializer(),
         mapOf("page" to page.toString()),
-    )
+    ).let { payload ->
+        val r = rules()
+        if (r.isEmpty) payload else payload.copy(list = payload.list.filterNot { r.hides(it) })
+    }
 
     /**
      * 删除一条观看历史。
@@ -437,14 +466,13 @@ class JmRepository(
             WeekFilterPayload.serializer(),
             mapOf("id" to issueId, "type" to type, "page" to page.toString()),
         )
-        return PagedList(payload.list, payload.total?.toIntOrNull() ?: 0)
+        return PagedList(payload.list, payload.total?.toIntOrNull() ?: 0).blockFiltered()
     }
 
     /** 随机推荐。`data` 是**裸数组**（与 `promote` 同形），不带分页信息。 */
-    suspend fun randomRecommend(): List<ListItem> = remote.get(
-        JmPaths.RANDOM_RECOMMEND_LIST,
-        ListSerializer(ListItem.serializer()),
-    )
+    suspend fun randomRecommend(): List<ListItem> =
+        remote.get(JmPaths.RANDOM_RECOMMEND_LIST, ListSerializer(ListItem.serializer()))
+            .let { list -> rules().takeIf { !it.isEmpty }?.let { r -> list.filterNot { r.hides(it) } } ?: list }
 
     /** 画师列表。`search_query` 留空即不筛。 */
     suspend fun creatorAuthors(page: Int, query: String = ""): CreatorPageResult<CreatorAuthor> =
@@ -537,7 +565,7 @@ class JmRepository(
             mapOf("page" to page.toString()),
         )
         // 这个接口的键是 `item` / `totalCnt`（见 MoreListPayload 的说明）
-        return PagedList(payload.items, payload.totalEither)
+        return PagedList(payload.items, payload.totalEither).blockFiltered()
     }
 
     /** 收藏的标签（上限 50）。 */
@@ -615,7 +643,7 @@ class JmRepository(
                 order?.let { put("o", it) }
             },
         )
-        return PagedList(payload.content, payload.total?.toIntOrNull() ?: 0)
+        return PagedList(payload.content, payload.total?.toIntOrNull() ?: 0).blockFiltered()
     }
 
     /**
@@ -628,7 +656,7 @@ class JmRepository(
         JmPaths.PROMOTE_LIST,
         MoreListPayload.serializer(),
         mapOf("id" to id, "page" to page.toString()),
-    ).let { PagedList(it.items, it.totalEither) }
+    ).let { PagedList(it.items, it.totalEither).blockFiltered() }
 
     /**
      * 连载更新表（每周更新）。
@@ -791,7 +819,8 @@ class JmRepository(
         fun create(
             authStore: AuthStore,
             session: JmSession = JmSession(),
-        ): JmRepository = JmRepository(JmRemote(session, authStore), authStore)
+            blockStore: BlockStore? = null,
+        ): JmRepository = JmRepository(JmRemote(session, authStore), authStore, blockStore)
     }
 }
 

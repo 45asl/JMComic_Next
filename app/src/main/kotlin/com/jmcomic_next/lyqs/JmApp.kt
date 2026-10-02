@@ -8,6 +8,7 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.auth.AuthStore
+import com.jmcomic_next.lyqs.data.prefs.BlockStore
 import com.jmcomic_next.lyqs.data.prefs.ReadProgressStore
 
 /**
@@ -28,8 +29,13 @@ class JmApp : Application(), SingletonImageLoader.Factory {
     /** 阅读进度（作品 → 上次读到哪一话）。服务端历史只有作品粒度，这一层必须在本地。 */
     val readProgress: ReadProgressStore by lazy { ReadProgressStore(this) }
 
+    /** 屏蔽规则（关键词 / 分类 / 标签）。 */
+    val blockStore: BlockStore by lazy { BlockStore(this) }
+
     /** 全局唯一的仓储实例：持有接口主机、请求 Token、图床主机与账号会话。 */
-    val repository: JmRepository by lazy { JmRepository.create(authStore = authStore) }
+    val repository: JmRepository by lazy {
+        JmRepository.create(authStore = authStore, blockStore = blockStore)
+    }
 
     override fun onCreate() {
         super.onCreate()
