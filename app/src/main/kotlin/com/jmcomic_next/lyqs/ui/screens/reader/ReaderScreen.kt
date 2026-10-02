@@ -445,7 +445,10 @@ private fun ScrollReader(payload: ReadPayload, repo: JmRepository) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = Spacing.xxl),
-        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+        // **页间不能有任何间距**：绝大多数作品是「分页拼成的伪长图」，
+        // 相邻两页要严丝合缝地接上。官方 Web 端甚至用 `mt-[-2px]` 让两页互相咬合
+        // 来消掉拼接处的亚像素缝（见 JMComic_SRC 的 Read.tsx），我这边原来反而加了 4dp 间距。
+        // 实测那 4dp 就是接缝处一道明显的横线。
     ) {
         // key 用「下标 + 地址」而不是单用地址：服务端偶尔会重复或留空 image，
         // 单用地址会撞出重复 key 直接崩掉整个阅读页
@@ -459,9 +462,8 @@ private fun ScrollReader(payload: ReadPayload, repo: JmRepository) {
                 // 3:4 是绝大多数页的比例，用它撑出占位高度：否则加载中与失败的页是 0 高，
                 // 用户看到的是「两张图之间莫名多出一段空白」，也点不到重试
                 placeholderRatio = 0.72f,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(Radius.xs)),
+                // 不裁剪：圆角会在每页四角切掉内容，拼接处也会多出两条弧线
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -667,7 +669,11 @@ private fun PageFallback(text: String?, placeholderRatio: Float?, onClick: (() -
         Modifier.fillMaxSize()
     }
     Box(
-        modifier = size.background(c.surfaceSunken).then(
+        // 只有**失败**才画底色与提示：加载中若也画一块底色，在伪长图里就像平白多出一道灰条。
+        // 高度照样占住（见 size），所以图到了不会跳。
+        modifier = size.then(
+            if (text != null) Modifier.background(c.surfaceSunken) else Modifier
+        ).then(
             if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
         ),
         contentAlignment = Alignment.Center,
