@@ -333,3 +333,162 @@ data class ForumPayload(
      */
     val totalCount: Int get() = total?.toIntOrNull() ?: 0
 }
+
+// ---------------------------------------------------------------------------
+// 期刊（周刊）、随机推荐、创作者库
+//
+// 这三块的 data 形态互不相同，而且与前面的列表都不一样 ——
+// 全部按实测响应建模，注释里写了实测样例。
+// ---------------------------------------------------------------------------
+
+/**
+ * 期刊列表（`week` 接口的 `data`）。
+ *
+ * 实测：
+ * ```
+ * {"categories":[{"id":"259","title":"","time":"2026第258期09.25 - 09.18"},...],
+ *  "type":[{"id":"manga","name":"日漫"},...]}
+ * ```
+ *
+ * 两点要注意：`title` 实测是**空串**，能显示的是 `time`；
+ * 刊期 id 与「第 N 期」并不相等（id 259 对应第 258 期），所以界面上不能拿 id 当期号显示。
+ */
+@Serializable
+data class WeekPayload(
+    val categories: List<WeekCategory> = emptyList(),
+    val type: List<WeekType> = emptyList(),
+)
+
+/** 一个刊期。 */
+@Serializable
+data class WeekCategory(
+    @Serializable(with = FlexString::class) val id: String = "",
+    val title: String? = null,
+    /** 期号与日期范围，例如「2026第258期09.25 - 09.18」。 */
+    val time: String? = null,
+) {
+    /** 展示用名称：`title` 实测为空，回退到 [time]。 */
+    val label: String get() = title?.takeIf { it.isNotBlank() } ?: time.orEmpty()
+}
+
+/** 作品类型（`manga` 日漫 / `another` 其他 / `hanman` 韩漫）。 */
+@Serializable
+data class WeekType(
+    @Serializable(with = FlexString::class) val id: String = "",
+    val name: String? = null,
+)
+
+/** 期刊内的作品列表（`week/filter` 的 `data`）：`{total, list}`，与「更多列表」同形。 */
+@Serializable
+data class WeekFilterPayload(
+    @Serializable(with = FlexStringOrNull::class) val total: String? = null,
+    val list: List<ListItem> = emptyList(),
+)
+
+/**
+ * 创作者库的通用外壳。
+ *
+ * `creator_author` 与 `creator_work` 都是**双层封套**：
+ * 外层是统一的 `{code, data}`，解出来的 `data` 里还有一层 `{status, data:{total, content}}`，
+ * 而且 `status` 一个回字符串 `"200"`、一个回数字 `200`（实测如此）。因此 status 用宽容类型接，
+ * 并且不拿它做判断 —— 真正的成败看外层封包的 code。
+ */
+@Serializable
+data class CreatorEnvelope<T>(
+    @Serializable(with = FlexStringOrNull::class) val status: String? = null,
+    val data: T? = null,
+)
+
+/** 分页内容（创作者库那层 `data`）。 */
+@Serializable
+data class CreatorPage<T>(
+    @Serializable(with = FlexStringOrNull::class) val total: String? = null,
+    val content: List<T> = emptyList(),
+)
+
+/** 画师（`creator_author` 的条目）。 */
+@Serializable
+data class CreatorAuthor(
+    @Serializable(with = FlexString::class) val id: String = "",
+    @SerialName("author_name") val name: String? = null,
+    /** 相对时间文案，服务端直接给「183 天 前」这种字符串。 */
+    @SerialName("update_date") val updateDate: String? = null,
+    /** 头像与横幅只给文件名，要按 `media/library/artists/<id>/{icon,banner}/<file>` 拼图床。 */
+    @SerialName("author_avatar") val avatar: String? = null,
+    @SerialName("background_image") val background: String? = null,
+)
+
+/** 作品（`creator_work` 的条目，也用于作品信息里的相关作品）。 */
+@Serializable
+data class CreatorWork(
+    @Serializable(with = FlexString::class) val id: String = "",
+    @SerialName("work_title") val title: String? = null,
+    @SerialName("work_image") val image: String? = null,
+    @SerialName("work_date") val date: String? = null,
+    /** 来源平台，例如 `patreon` / `fanbox`。 */
+    @SerialName("platform_name") val platform: String? = null,
+    @SerialName("author_name") val authorName: String? = null,
+    @SerialName("author_id") val authorId: String? = null,
+)
+
+/** 作品信息（`creator_work_info` 的 `data`）。 */
+@Serializable
+data class CreatorWorkInfo(
+    @SerialName("work_title") val title: String? = null,
+    @SerialName("work_date") val date: String? = null,
+    @SerialName("author_name") val authorName: String? = null,
+    @SerialName("related_works") val relatedWorks: List<CreatorWork> = emptyList(),
+)
+
+/**
+ * 作品内容（`creator_work_info_detail` 的 `data`）。
+ *
+ * 形态与阅读数据接近（`images` + 正文），实测 `total_page` 可能为 0、`images` 为空 ——
+ * 即**并非每个作品都有可看的内容**，界面要能接住这种情况。
+ */
+@Serializable
+data class CreatorWorkContent(
+    @Serializable(with = FlexString::class) val id: String = "",
+    val name: String? = null,
+    @SerialName("total_page")
+    @Serializable(with = FlexInt::class) val totalPage: Int = 0,
+    val images: List<CreatorImage> = emptyList(),
+    val content: String? = null,
+    @SerialName("adddt") val addDate: String? = null,
+)
+
+/** 作品内容里的一张图。 */
+@Serializable
+data class CreatorImage(
+    /** 相对路径，需拼图床主机。 */
+    val image: String = "",
+)
+
+/** 收藏标签列表（`tags_favorite`）。 */
+@Serializable
+data class TagPayload(
+    val list: List<TagItem> = emptyList(),
+)
+
+/**
+ * 一个被收藏的标签。
+ *
+ * 字段名是 **`tag`** 而不是 `name`/`id`（依据 `TagMarkList.tsx` 里 `item.tag`；
+ * 选中判断、删除、跳搜索全用它）。写错不会报错，只会静默变成一串空标签。
+ */
+@Serializable
+data class TagItem(
+    val tag: String = "",
+)
+
+/** 整部作品的下载信息（`album_download_2/<id>`）。 */
+@Serializable
+data class DownloadPayload(
+    /** `"1"` 成功；实测未登录时是 `"0"` + `msg`。 */
+    @Serializable(with = FlexStringOrNull::class) val status: String? = null,
+    val msg: String? = null,
+    val title: String? = null,
+    @SerialName("download_url") val downloadUrl: String? = null,
+) {
+    val isOk: Boolean get() = status == "1" && !downloadUrl.isNullOrBlank()
+}
