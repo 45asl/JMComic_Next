@@ -128,4 +128,7 @@ dependencies {
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+
+    // 纯 JVM 单元测试：覆盖协议推导与「宽容解析」这两块最容易悄悄改坏、又不需要设备的地方
+    testImplementation(libs.junit)
 }

@@ -90,7 +90,12 @@ app/src/main/kotlin/com/jmcomic_next/lyqs/
 ```bash
 gradle :app:assembleDebug      # app/build/outputs/apk/debug/app-debug.apk
 gradle :app:assembleRelease    # app/build/outputs/apk/release/app-release.apk
+gradle :app:testDebugUnitTest  # 单元测试（协议推导与宽容解析，秒级）
 ```
+
+单元测试只覆盖**不需要设备**的部分：切片份数推导（对照官方算法独立算出的向量）、
+md5/Token 推导、以及解析层那些「类型不稳、缺字段、多字段」的容错行为 ——
+这几处一旦被改坏，表现是某个页面**静默**空掉而不是抛异常，最值得钉住。
 
 **Release 签名**：签名信息放在 `keystore.properties`（不入库，见 `.gitignore`），密钥库本身也在仓库之外：
 
