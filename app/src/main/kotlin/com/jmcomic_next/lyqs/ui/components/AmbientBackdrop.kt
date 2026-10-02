@@ -1,29 +1,37 @@
 package com.jmcomic_next.lyqs.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import com.jmcomic_next.lyqs.ui.LocalWallpaper
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 
 /**
- * 环境渐变底 —— 整个应用的 Acrylic 采样底。
+ * 环境底 —— 整个应用的采样底，两层的组合：
  *
- * 这里对应博客 `--wallpaper` 令牌的**渐变网格**部分，
- * 但**刻意不实现壁纸系统**：没有图源、没有壁纸选择器、没有第三方接口。
- * 博客里那套可调壁纸（五种来源模式）在本应用中不适用，理由有二：
+ *  1. **渐变网格**（永远有）：对应博客 `--wallpaper` 令牌里那四层
+ *     （三层径向 + 一层线性），深浅色各一组色值，这里按同样的层序复现。
+ *     实心风格（Miuix / Material）的配色把渐变换成了平色，于是这一层自动退化成纯色底。
+ *  2. **壁纸图片**（可选）：只有用户自己开了才画，见 [com.jmcomic_next.lyqs.data.wallpaper.WallpaperMode]。
  *
- *  1. 阅读类应用的可读性优先，背景强度必须稳定可预期；
- *  2. 毛玻璃只需要一个「有层次、有色相变化」的底就成立，
- *     渐变网格已经足够，引入图片反而增加解码与内存开销。
+ * 关于「为什么默认没有壁纸」：博客是网页，背景图不影响阅读；本应用是阅读器，
+ * 所以默认档是纯渐变、**不发任何网络请求**，想换背景的人自己去设置里开。
  *
- * 博客的 `--wallpaper` 由四层构成（三层径向 + 一层线性），深浅色各自一组色值，
- * 这里按同样的层序复现，色相取自 [com.jmcomic_next.lyqs.ui.theme.JmPalette]。
+ * 壁纸之上的遮罩由两部分相加：用户调的压暗值（对应博客的 `--wallpaper-dim`）
+ * 与当前风格的 [com.jmcomic_next.lyqs.ui.theme.JmSpec.wallpaperScrim]。
+ * 后者是必要的：风格不同，玻璃透出来的程度差很多，Translucent 那种重度透明
+ * 如果只按博客默认的 0.12 压暗，文字压在花壁纸上根本读不了。
  */
 @Composable
 fun AmbientBackdrop(
@@ -31,50 +39,80 @@ fun AmbientBackdrop(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val c = JmTheme.colors
+    val spec = JmTheme.spec
+    val wall = LocalWallpaper.current
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .drawWithCache {
-                val w = size.width
-                val h = size.height
+    Box(modifier = modifier.fillMaxSize()) {
+        // 1. 渐变网格（或实心风格的纯色底）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithCache {
+                    val w = size.width
+                    val h = size.height
 
-                // 1. 底层线性渐变（CSS: linear-gradient(165deg, ...)）
-                val base = Brush.linearGradient(
-                    colors = c.backdrop,
-                    start = Offset(0f, 0f),
-                    end = Offset(w * 0.35f, h),
-                )
+                    // 底层线性渐变（CSS: linear-gradient(165deg, ...)）
+                    val base = Brush.linearGradient(
+                        colors = c.backdrop,
+                        start = Offset(0f, 0f),
+                        end = Offset(w * 0.35f, h),
+                    )
 
-                // 2. 左上：偏蓝的主光斑（CSS: radial-gradient(1100px 720px at 12% -8%)）
-                val glowA = Brush.radialGradient(
-                    colors = listOf(c.accent.copy(alpha = 0.45f), Color.Transparent),
-                    center = Offset(w * 0.12f, -h * 0.08f),
-                    radius = maxOf(w, h) * 0.75f,
-                )
+                    // 左上：偏蓝的主光斑（CSS: radial-gradient(1100px 720px at 12% -8%)）
+                    val glowA = Brush.radialGradient(
+                        colors = listOf(c.accent.copy(alpha = 0.45f), Color.Transparent),
+                        center = Offset(w * 0.12f, -h * 0.08f),
+                        radius = maxOf(w, h) * 0.75f,
+                    )
 
-                // 3. 右上：偏紫的补光斑
-                val glowB = Brush.radialGradient(
-                    colors = listOf(c.tintWarm.copy(alpha = 0.34f), Color.Transparent),
-                    center = Offset(w * 0.88f, h * 0.04f),
-                    radius = maxOf(w, h) * 0.68f,
-                )
+                    // 右上：偏紫的补光斑
+                    val glowB = Brush.radialGradient(
+                        colors = listOf(c.tintWarm.copy(alpha = 0.34f), Color.Transparent),
+                        center = Offset(w * 0.88f, h * 0.04f),
+                        radius = maxOf(w, h) * 0.68f,
+                    )
 
-                // 4. 下方：偏青的收尾光斑
-                val glowC = Brush.radialGradient(
-                    colors = listOf(c.tintCool.copy(alpha = 0.30f), Color.Transparent),
-                    center = Offset(w * 0.62f, h * 1.08f),
-                    radius = maxOf(w, h) * 0.72f,
-                )
+                    // 下方：偏青的收尾光斑
+                    val glowC = Brush.radialGradient(
+                        colors = listOf(c.tintCool.copy(alpha = 0.30f), Color.Transparent),
+                        center = Offset(w * 0.62f, h * 1.08f),
+                        radius = maxOf(w, h) * 0.72f,
+                    )
 
-                onDrawWithContent {
-                    drawRect(brush = base)
-                    drawRect(brush = glowA)
-                    drawRect(brush = glowB)
-                    drawRect(brush = glowC)
-                    drawContent()
-                }
-            },
-        content = content,
-    )
+                    onDrawWithContent {
+                        drawRect(brush = base)
+                        drawRect(brush = glowA)
+                        drawRect(brush = glowB)
+                        drawRect(brush = glowC)
+                        drawContent()
+                    }
+                },
+        )
+
+        // 2. 壁纸图片 + 遮罩
+        if (wall.showsImage) {
+            AsyncImage(
+                model = wall.url,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    // 模糊在 API 31+ 生效（RenderEffect）；更低版本自动忽略，
+                    // 那时壁纸仍是清晰的 —— 比整块糊掉或直接不显示都要好
+                    .then(if (wall.blur > 0) Modifier.blur(wall.blur.dp) else Modifier),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        // 近黑遮罩（与博客一致：两层 rgba(6,8,14,dim)）
+                        Color(0xFF06080E).copy(
+                            alpha = (wall.dim + spec.wallpaperScrim).coerceIn(0f, 0.86f),
+                        ),
+                    ),
+            )
+        }
+
+        content()
+    }
 }

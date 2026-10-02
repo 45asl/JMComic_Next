@@ -1,6 +1,12 @@
 package com.jmcomic_next.lyqs.ui.screens.profile
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -18,16 +24,23 @@ import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,8 +52,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.draw.clip
+import kotlinx.coroutines.launch
 import com.jmcomic_next.lyqs.BuildConfig
 import com.jmcomic_next.lyqs.data.BlockRules
+import com.jmcomic_next.lyqs.data.wallpaper.WallpaperMode
 import com.jmcomic_next.lyqs.data.prefs.ReaderMode
 import com.jmcomic_next.lyqs.data.prefs.ThemeMode
 import com.jmcomic_next.lyqs.data.remote.AdBlocker
@@ -48,13 +64,22 @@ import com.jmcomic_next.lyqs.data.remote.JmSession
 import com.jmcomic_next.lyqs.data.remote.dto.JmSettings
 import com.jmcomic_next.lyqs.data.remote.dto.MemberInfo
 import com.jmcomic_next.lyqs.ui.LocalRepository
+import com.jmcomic_next.lyqs.ui.LocalWallpaper
+import com.jmcomic_next.lyqs.ui.LocalWallpaperStore
 import com.jmcomic_next.lyqs.ui.components.CategoryChip
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
+import com.jmcomic_next.lyqs.ui.theme.jmShape
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
+import com.jmcomic_next.lyqs.ui.theme.LocalJmPalette
+import com.jmcomic_next.lyqs.ui.theme.LocalJmSpec
 import com.jmcomic_next.lyqs.ui.theme.Motion
+import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.ui.theme.Spacing
+import com.jmcomic_next.lyqs.ui.theme.Styles
+import com.jmcomic_next.lyqs.ui.theme.ThemeStyle
+import com.jmcomic_next.lyqs.ui.theme.paletteFor
 
 /**
  * 「我的」页。
@@ -71,6 +96,9 @@ fun ProfileScreen(
     onDynamicColorChange: (Boolean) -> Unit,
     readerMode: ReaderMode,
     onReaderModeChange: (ReaderMode) -> Unit,
+    themeStyle: ThemeStyle,
+    onThemeStyleChange: (ThemeStyle) -> Unit,
+    isDark: Boolean,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
     onOpenFavorites: () -> Unit,
@@ -103,7 +131,18 @@ fun ProfileScreen(
                     onOpenTags = onOpenTags,
                 )
             }
-            item { AppearanceCard(themeMode, onThemeModeChange, dynamicColor, onDynamicColorChange) }
+            item {
+                AppearanceCard(
+                    themeStyle = themeStyle,
+                    onThemeStyleChange = onThemeStyleChange,
+                    themeMode = themeMode,
+                    onThemeModeChange = onThemeModeChange,
+                    dynamicColor = dynamicColor,
+                    onDynamicColorChange = onDynamicColorChange,
+                    isDark = isDark,
+                )
+            }
+            item { WallpaperCard() }
             item { BlockCard(onOpenBlock) }
             item { ReadingCard(readerMode, onReaderModeChange) }
             item { PrivacyCard() }
@@ -275,16 +314,57 @@ private fun BlockCard(onOpenBlock: () -> Unit) {
     }
 }
 
+/**
+ * 外观。
+ *
+ * 顺序刻意是「先风格、后深浅」：风格决定的是**这套界面像谁**（圆角尺度、表面工艺、
+ * 字重、动效），深浅色只是在它之上的一维。先选颜色的界面，用户会以为自己在挑主题包。
+ */
 @Composable
 private fun AppearanceCard(
+    themeStyle: ThemeStyle,
+    onThemeStyleChange: (ThemeStyle) -> Unit,
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
     dynamicColor: Boolean,
     onDynamicColorChange: (Boolean) -> Unit,
+    isDark: Boolean,
 ) {
     val c = JmTheme.colors
     SettingCard(title = "外观") {
-        Text("主题", style = MaterialTheme.typography.bodyLarge, color = c.text)
+        Text("风格", style = MaterialTheme.typography.bodyLarge, color = c.text)
+        Text(
+            text = themeStyle.tagline,
+            style = MaterialTheme.typography.labelSmall,
+            color = c.textTertiary,
+            modifier = Modifier.padding(top = Spacing.xxs),
+        )
+
+        // 四张预览卡：**用该风格自己的令牌渲染**，所以预览就是它真实的样子，
+        // 不是画一张示意图（图会跟实现走散，这种「示意图撒谎」的问题很难被发现）
+        ThemeStyle.entries.chunked(2).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                row.forEach { style ->
+                    StyleOption(
+                        style = style,
+                        selected = style == themeStyle,
+                        isDark = isDark,
+                        onClick = { onThemeStyleChange(style) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = "主题",
+            style = MaterialTheme.typography.bodyLarge,
+            color = c.text,
+            modifier = Modifier.padding(top = Spacing.lg),
+        )
         SingleChoiceSegmentedButtonRow(
             modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
         ) {
@@ -320,6 +400,248 @@ private fun AppearanceCard(
             }
             Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
         }
+    }
+}
+
+/**
+ * 一张风格预览卡。
+ *
+ * 做法是**临时把该风格的配色与参数提供给子树**，再让正常的 [GlassSurface] 去画 ——
+ * 于是预览与本尊共用同一套绘制代码。这样以后改 GlassSurface，预览不会偷偷变得不准。
+ */
+@Composable
+private fun StyleOption(
+    style: ThemeStyle,
+    selected: Boolean,
+    isDark: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = paletteFor(style, isDark)
+    val spec = Styles.of(style)
+    val c = JmTheme.colors
+
+    CompositionLocalProvider(
+        LocalJmPalette provides palette,
+        LocalJmSpec provides spec,
+    ) {
+        GlassSurface(
+            modifier = modifier,
+            level = GlassLevel.Card,
+            shape = jmShape(Radius.lg),
+            onClick = onClick,
+        ) {
+            Column(Modifier.fillMaxWidth().padding(Spacing.sm)) {
+                // 迷你场景：这张风格下的「背景 + 一张卡片 + 强调色」
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp)
+                        .clip(jmShape(Radius.sm))
+                        .background(palette.backdrop.first()),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .padding(Spacing.xs)
+                            .fillMaxWidth()
+                            .height(28.dp)
+                            .clip(jmShape(Radius.md))
+                            .background(
+                                palette.surface2.copy(
+                                    alpha = (palette.surface2.alpha * spec.surface.fillAlphaScale)
+                                        .coerceIn(0f, 1f),
+                                ),
+                            ),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .padding(start = Spacing.xs + 6.dp, top = Spacing.xs + 8.dp)
+                            .size(12.dp)
+                            .clip(RoundedCornerShape(Radius.pill))
+                            .background(palette.accent),
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = Spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = style.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (selected) palette.accent else c.text,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (selected) {
+                        Text("当前", style = MaterialTheme.typography.labelSmall, color = palette.accent)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 壁纸。
+ *
+ * 默认档是「纯渐变」：**不发任何请求**。这一点与博客相反（博客默认 Bing），
+ * 因为这里是阅读器 —— 想要背景图的人自己开，开的时候也告诉他这会连出去。
+ *
+ * 四个来源沿用了博客 `src/config/wallpapers.ts` 的接口地址；博客还有「二次元自选」
+ * 那种按图源勾选的模式，需要把几百条图集合打包进来，这里没做，换成了一个自定义地址。
+ * 缓慢缩放（Ken Burns）也没做：阅读时背景一直在动，是干扰而不是装饰。
+ */
+@Composable
+private fun WallpaperCard() {
+    val c = JmTheme.colors
+    val store = LocalWallpaperStore.current
+    val wall = LocalWallpaper.current
+    val scope = rememberCoroutineScope()
+
+    SettingCard(title = "壁纸") {
+        Text("来源", style = MaterialTheme.typography.bodyLarge, color = c.text)
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+        ) {
+            WallpaperMode.entries.forEach { mode ->
+                val on = mode == wall.mode
+                Surface(
+                    shape = RoundedCornerShape(Radius.pill),
+                    color = if (on) c.accentSoft else c.surfaceSunken,
+                    onClick = {
+                        store?.setMode(mode)
+                        if (mode != WallpaperMode.Off) scope.launch { store?.next(force = true) }
+                    },
+                ) {
+                    Text(
+                        text = mode.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (on) c.accent else c.textSecondary,
+                        modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs),
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = wall.mode.desc,
+            style = MaterialTheme.typography.labelSmall,
+            color = c.textTertiary,
+            modifier = Modifier.padding(top = Spacing.sm),
+        )
+
+        if (wall.mode == WallpaperMode.Custom) {
+            var draft by remember { mutableStateOf(wall.customUrl) }
+            OutlinedTextField(
+                value = draft,
+                onValueChange = {
+                    draft = it
+                    store?.setCustomUrl(it)
+                },
+                singleLine = true,
+                placeholder = { Text("https://…/image.jpg", color = c.textTertiary) },
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
+            )
+            TextButton(onClick = { scope.launch { store?.next(force = true) } }) {
+                Text("应用这个地址", color = c.accent)
+            }
+        }
+
+        if (wall.mode != WallpaperMode.Off && wall.mode != WallpaperMode.Custom) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = { scope.launch { store?.next(force = true) } },
+                    enabled = wall.loading != true,
+                ) {
+                    Text(if (wall.loading) "取图中…" else "换一张", color = c.accent)
+                }
+                IconButton(onClick = { scope.launch { store?.next(force = true) } }) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "换一张", tint = c.accent)
+                }
+                Text(
+                    text = when (wall.intervalMinutes) {
+                        0 -> "自动更换：关闭"
+                        else -> "自动更换：每 ${wall.intervalMinutes} 分钟"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.textTertiary,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            // 间隔档位与博客一致：关闭 / 5 / 15 / 30 / 60 分钟
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                listOf(0, 5, 15, 30, 60).forEachIndexed { index, minutes ->
+                    SegmentedButton(
+                        selected = wall.intervalMinutes == minutes,
+                        onClick = { store?.setInterval(minutes) },
+                        shape = SegmentedButtonDefaults.itemShape(index, 5),
+                    ) {
+                        Text(
+                            text = if (minutes == 0) "关" else "$minutes",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
+            }
+        }
+
+        if (wall.mode != WallpaperMode.Off) {
+            Text(
+                text = "模糊 ${wall.blur}",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.textSecondary,
+                modifier = Modifier.padding(top = Spacing.md),
+            )
+            Slider(
+                value = wall.blur.toFloat(),
+                onValueChange = { store?.setBlur(it.toInt()) },
+                valueRange = 0f..24f,
+                steps = 23,
+            )
+            Text(
+                text = "压暗 ${"%.2f".format(wall.dim)}　（壁纸越花越需要压暗，玻璃才压得住文字）",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.textSecondary,
+            )
+            Slider(
+                value = wall.dim,
+                onValueChange = { store?.setDim(it) },
+                valueRange = 0f..0.6f,
+            )
+        }
+
+        wall.credit?.takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = "图片：$it",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.textTertiary,
+                modifier = Modifier.padding(top = Spacing.sm),
+            )
+        }
+        wall.error?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelSmall,
+                color = c.error,
+                modifier = Modifier.padding(top = Spacing.sm),
+            )
+        }
+
+        Text(
+            text = "壁纸是本应用**唯一**会连出去的第三方请求，且只在你选择图片来源后才会发生；" +
+                "选「纯渐变」时一个字节都不会发。已取到的地址会缓存在本地轮换（攒够 4 张就不再请求），" +
+                "Bing 的地址每天只重新取一次 —— 不为了一张背景图反复打别人的接口。" +
+                "阅读页不画壁纸：伪长图的接缝必须看不见。",
+            style = MaterialTheme.typography.labelSmall,
+            color = c.textTertiary,
+            modifier = Modifier.padding(top = Spacing.sm),
+        )
     }
 }
 
@@ -374,6 +696,7 @@ private fun PrivacyCard() {
     val c = JmTheme.colors
     SettingCard(title = "隐私与广告") {
         InfoRow("广告接口调用", "从不调用")
+        InfoRow("第三方请求", "仅壁纸（默认关闭）")
         InfoRow("已屏蔽广告/追踪域名", "${AdBlocker.blockedDomainCount} 类")
         InfoRow("凭证存储", "Keystore 加密")
         Text(
@@ -391,13 +714,15 @@ private fun PrivacyCard() {
 @Composable
 private fun AboutCard() {
     val c = JmTheme.colors
+    val themeStyle = JmTheme.spec.style
     SettingCard(title = "关于") {
         InfoRow("版本", BuildConfig.VERSION_NAME)
-        InfoRow("设计系统", "Fluent (Acrylic/Mica) × MIUI 毛玻璃")
+        InfoRow("界面风格", themeStyle.label)
         InfoRow("动效基准", "${Motion.FAST} / ${Motion.BASE} / ${Motion.SLOW} ms")
         Text(
-            text = "视觉令牌移植自 moyingyilang.github.io 的 global.css。" +
-                "本应用不提供壁纸功能，毛玻璃采样自内置的环境渐变底。",
+            text = "WindowGlass 与 Translucent 的令牌移植自 moyingyilang.github.io 的 global.css" +
+                "（三径向 + 一线性的渐变底、发丝描边、上缘高光）；Miuix 与 Material 是另外两套表面工艺。" +
+                "四套风格换的不只是配色 —— 圆角尺度、表面是实心还是玻璃、字重、按压手感都跟着换。",
             style = MaterialTheme.typography.labelSmall,
             color = c.textTertiary,
             modifier = Modifier.padding(top = Spacing.sm),

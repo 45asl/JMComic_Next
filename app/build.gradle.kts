@@ -36,8 +36,9 @@ android {
         // 1.1.4       = 界面美化一轮（卡片尺寸、等高、留白、标题里的箭头提示）
         // 1.1.5       = 阅读页页间缝隙（伪长图被切开）+ 加载占位不再画底色
         // 1.2.0       = 内容屏蔽（关键词 / 分类 / 标签，过滤收敛在数据层）
-        versionCode = 10
-        versionName = "1.2.0"
+        // 1.3.0       = 四套界面风格（WindowGlass / Translucent / Miuix / Material）+ 可选壁纸
+        versionCode = 11
+        versionName = "1.3.0"
     }
 
     signingConfigs {

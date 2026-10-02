@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.SubcomposeAsyncImage
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
+import com.jmcomic_next.lyqs.ui.theme.jmShape
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.ui.theme.Spacing
@@ -71,7 +72,7 @@ fun ComicCard(
     Column(
         modifier = modifier
             .width(width)
-            .clip(RoundedCornerShape(Radius.lg))
+            .clip(jmShape(Radius.lg))
             .clickable(onClick = onClick)
             .padding(bottom = Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -82,7 +83,7 @@ fun ComicCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(COVER_RATIO)
-                .clip(RoundedCornerShape(Radius.lg)),
+                .clip(jmShape(Radius.lg)),
         )
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -139,7 +140,7 @@ fun ComicRow(
                 modifier = Modifier
                     .width(76.dp)
                     .aspectRatio(COVER_RATIO)
-                    .clip(RoundedCornerShape(Radius.md)),
+                    .clip(jmShape(Radius.md)),
             )
             Column(
                 modifier = Modifier.weight(1f),
@@ -182,7 +183,7 @@ fun CategoryChip(
     val c = JmTheme.colors
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(Radius.xs))
+            .clip(jmShape(Radius.xs))
             .background(if (blocked) c.surfaceSunken else c.accentSoft)
             .then(
                 if (onClick != null || onLongClick != null) {

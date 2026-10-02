@@ -76,6 +76,7 @@ import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
 import com.jmcomic_next.lyqs.ui.screens.favorites.FolderPickerDialog
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
+import com.jmcomic_next.lyqs.ui.theme.jmShape
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.ui.plainText
@@ -741,7 +742,7 @@ private fun DetailContent(
                     modifier = Modifier
                         .width(120.dp)
                         .aspectRatio(3f / 4f)
-                        .clip(RoundedCornerShape(Radius.lg)),
+                        .clip(jmShape(Radius.lg)),
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -779,7 +780,7 @@ private fun DetailContent(
                     )
                     // 点赞：未点过用描边心形，点过用实心强调色
                     Surface(
-                        shape = RoundedCornerShape(Radius.xs),
+                        shape = jmShape(Radius.xs),
                         color = if (detail.liked) c.accentSoft else c.surfaceSunken,
                         onClick = onLike,
                     ) {

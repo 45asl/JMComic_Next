@@ -62,6 +62,7 @@ import com.jmcomic_next.lyqs.ui.components.GlassTopBar
 import com.jmcomic_next.lyqs.ui.components.LoadMoreFooter
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.components.MessageState
+import com.jmcomic_next.lyqs.ui.theme.jmShape
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.ui.theme.Spacing
@@ -589,7 +590,7 @@ private fun WordChips(words: List<String>, onPick: (String) -> Unit) {
     ) {
         words.forEach { word ->
             Surface(
-                shape = RoundedCornerShape(Radius.xs),
+                shape = jmShape(Radius.xs),
                 color = c.accentSoft,
                 onClick = { onPick(word) },
             ) {

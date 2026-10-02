@@ -33,6 +33,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.jmcomic_next.lyqs.data.prefs.ReaderMode
 import com.jmcomic_next.lyqs.data.prefs.ThemeMode
+import com.jmcomic_next.lyqs.ui.theme.ThemeStyle
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.screens.auth.AuthScreen
@@ -122,6 +123,8 @@ fun JmNavHost(
     onThemeModeChange: (ThemeMode) -> Unit,
     dynamicColor: Boolean,
     onDynamicColorChange: (Boolean) -> Unit,
+    themeStyle: ThemeStyle,
+    onThemeStyleChange: (ThemeStyle) -> Unit,
     isDark: Boolean,
 ) {
     val nav = rememberNavController()
@@ -236,6 +239,9 @@ fun JmNavHost(
                     onDynamicColorChange = onDynamicColorChange,
                     readerMode = readerMode,
                     onReaderModeChange = onReaderModeChange,
+                    themeStyle = themeStyle,
+                    onThemeStyleChange = onThemeStyleChange,
+                    isDark = isDark,
                     onLogin = { nav.push(authFor("")) },
                     onLogout = {
                         // 登出要走接口，但本地登出不依赖它成功（见 JmRepository.logout）

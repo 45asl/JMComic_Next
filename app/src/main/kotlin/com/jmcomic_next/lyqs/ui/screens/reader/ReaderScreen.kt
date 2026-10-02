@@ -81,6 +81,7 @@ import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
+import com.jmcomic_next.lyqs.ui.theme.jmShape
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.ui.theme.Spacing
@@ -257,7 +258,10 @@ fun ReaderScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(if (mode == ReaderMode.Page) Color.Black else Color.Transparent)
+                            // 阅读页必须有**不透明**底：壁纸若从页间/页边透出来，
+                            // 伪长图的接缝会重新变得可见，这正是 1.1.5 修掉的问题。
+                            // 取 backdrop 的第一层色（各套配色里它都是实色）。
+                            .background(if (mode == ReaderMode.Page) Color.Black else c.backdrop.first())
                             .pointerInput(mode) {
                                 detectTapGestures(onTap = { barsVisible = !barsVisible })
                             },
@@ -282,7 +286,7 @@ fun ReaderScreen(
                         exit = slideOutVertically { -it },
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp),
                     ) {
-                        GlassSurface(level = GlassLevel.Flyout, shape = RoundedCornerShape(Radius.md)) {
+                        GlassSurface(level = GlassLevel.Flyout, shape = jmShape(Radius.md)) {
                             Text(
                                 text = message,
                                 style = MaterialTheme.typography.labelSmall,
@@ -393,7 +397,7 @@ private fun ChapterSwitcher(
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         GlassSurface(
             level = GlassLevel.Flyout,
-            shape = RoundedCornerShape(Radius.xl),
+            shape = jmShape(Radius.xl),
             tinted = true,
             modifier = Modifier.padding(bottom = Spacing.xl),
         ) {

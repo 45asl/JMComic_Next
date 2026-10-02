@@ -9,6 +9,7 @@ import coil3.request.crossfade
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.auth.AuthStore
 import com.jmcomic_next.lyqs.data.prefs.BlockStore
+import com.jmcomic_next.lyqs.data.wallpaper.WallpaperStore
 import com.jmcomic_next.lyqs.data.prefs.ReadProgressStore
 
 /**
@@ -31,6 +32,14 @@ class JmApp : Application(), SingletonImageLoader.Factory {
 
     /** 屏蔽规则（关键词 / 分类 / 标签）。 */
     val blockStore: BlockStore by lazy { BlockStore(this) }
+
+    /**
+     * 壁纸来源与已取到的地址。
+     *
+     * 复用业务请求的 OkHttp 客户端，于是广告域名拦截同样覆盖壁纸流量；
+     * 它懒加载，用户没开壁纸时不会有任何请求。
+     */
+    val wallpaperStore: WallpaperStore by lazy { WallpaperStore(this, repository.okHttp) }
 
     /** 全局唯一的仓储实例：持有接口主机、请求 Token、图床主机与账号会话。 */
     val repository: JmRepository by lazy {

@@ -1,5 +1,7 @@
 package com.jmcomic_next.lyqs.ui.theme
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -14,17 +16,29 @@ import androidx.compose.ui.unit.sp
  * 迁移约定：CSS 变量名去掉 `--` 前缀后转成大驼峰，数值原样保留，
  * 便于日后与博客对账。唯一有意为之的差异见 [Backdrop] 的注释。
  */
+/**
+ * 圆角阶梯。
+ *
+ * **这些值随风格变化**（[LocalJmSpec]），所以读法是 `@Composable` 的：
+ * Windows 11 的窗口是 8dp 圆角、Material 3 的卡片是 12dp、HyperOS 是 20dp ——
+ * 圆角尺度是「这套界面像谁」最直接的信号，写死就等于把四套风格抹平。
+ *
+ * 例外是 [pill]：胶囊形跟风格无关（哪个体系的浮动小标签都是全圆角）。
+ */
 object Radius {
+    private val scale: RadiusScale
+        @Composable @ReadOnlyComposable get() = LocalJmSpec.current.radius
+
     /** --r-xs */
-    val xs: Dp = 4.dp
+    val xs: Dp @Composable @ReadOnlyComposable get() = scale.xs
     /** --r-sm */
-    val sm: Dp = 8.dp
+    val sm: Dp @Composable @ReadOnlyComposable get() = scale.sm
     /** --r-md */
-    val md: Dp = 12.dp
+    val md: Dp @Composable @ReadOnlyComposable get() = scale.md
     /** --r-lg */
-    val lg: Dp = 18.dp
+    val lg: Dp @Composable @ReadOnlyComposable get() = scale.lg
     /** --r-xl */
-    val xl: Dp = 24.dp
+    val xl: Dp @Composable @ReadOnlyComposable get() = scale.xl
     /** --r-pill，胶囊形。用于页码这类短小的浮动标签。 */
     val pill: Dp = 999.dp
 }
@@ -76,6 +90,10 @@ object Motion {
  * 具体实现见 [com.jmcomic_next.lyqs.ui.theme.GlassSurface] 与
  * [com.jmcomic_next.lyqs.ui.components.AmbientBackdrop]。
  *
+ * 这里是**基准工艺**（博客那套）。实际生效的值来自 [SurfaceSpec]：
+ * WindowGlass 沿用这组，Translucent 把不透明度砍到 58%、模糊加到 64dp 并铺一层强调色，
+ * Miuix / Material 则完全不用玻璃（blur 0、noise 0）。
+ *
  * [blurRadius] 仅在 API 31+ 由 AmbientBackdrop 真实生效（RenderEffect），
  * 低版本自动退化为纯分层面。
  */
@@ -90,11 +108,23 @@ object Glass {
     const val TINT_ANGLE_DEG = 120f
 }
 
-/** --shadow-sm / --shadow-card / --shadow-flyout 的 elevation 近似（dp） */
-object Elevation {
+/**
+ * 投影基准值（dp）。对应博客的 --shadow-sm / --shadow-card / --shadow-flyout。
+ *
+ * 它是**基准**而非最终值：风格在 [SurfaceSpec.shadows] 里给出自己的一套
+ * （HyperOS 几乎不投影、Mica 的浮层投影更重），[Elevation] 读的是当前风格那份。
+ */
+object ElevationBase {
     val sm: Dp = 2.dp
     val card: Dp = 6.dp
     val flyout: Dp = 12.dp
+}
+
+/** 当前风格的投影。三档与 [com.jmcomic_next.lyqs.ui.components.GlassLevel] 一一对应。 */
+object Elevation {
+    val sm: Dp @Composable @ReadOnlyComposable get() = LocalJmSpec.current.surface.shadowOf(0)
+    val card: Dp @Composable @ReadOnlyComposable get() = LocalJmSpec.current.surface.shadowOf(1)
+    val flyout: Dp @Composable @ReadOnlyComposable get() = LocalJmSpec.current.surface.shadowOf(2)
 }
 
 /**

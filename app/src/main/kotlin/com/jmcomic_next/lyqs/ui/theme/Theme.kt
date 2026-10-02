@@ -46,45 +46,50 @@ object JmEasing {
 }
 
 /**
- * 字号阶梯。字体族刻意不指定 —— 与博客一致，交给平台原生字体栈
- * （中文环境即系统默认字体），中文排版最贴近系统观感，也不额外打包字体。
+ * 字号阶梯 **按风格生成**。
+ *
+ * 字体族刻意不指定 —— 与博客一致，交给平台原生字体栈（中文环境即系统默认字体），
+ * 中文排版最贴近系统观感，也不额外打包字体（MiSans 之类要带字体文件，体积换不来多少）。
+ *
+ * 风格之间字号差别不大，**字重**差别是很明显的：HyperOS 的标题是 Bold、
+ * Material 3 的标题是 Medium，同一句「我的」在两者里长得不一样，这正是识别度所在。
  */
-private val JmTypography = Typography(
+private fun typographyOf(scale: TypeScale): Typography = Typography(
     displaySmall = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = FontSize.display,
-        lineHeight = FontSize.display * 1.30f,
+        fontWeight = scale.titleWeight,
+        fontSize = scale.display,
+        lineHeight = scale.display * 1.30f,
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = FontSize.title,
-        lineHeight = FontSize.title * 1.40f,
+        fontWeight = scale.titleWeight,
+        fontSize = scale.title,
+        lineHeight = scale.title * 1.40f,
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = FontSize.subtitle,
-        lineHeight = FontSize.subtitle * 1.50f,
+        fontWeight = scale.subtitleWeight,
+        fontSize = scale.subtitle,
+        lineHeight = scale.subtitle * 1.50f,
     ),
     bodyLarge = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = FontSize.body,
-        lineHeight = FontSize.body * 1.72f,
+        fontWeight = scale.bodyWeight,
+        fontSize = scale.body,
+        lineHeight = scale.body * scale.lineHeightFactor,
     ),
     bodyMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = FontSize.label,
-        lineHeight = FontSize.label * 1.60f,
+        fontWeight = scale.bodyWeight,
+        fontSize = scale.label,
+        lineHeight = scale.label * 1.60f,
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
-        fontSize = FontSize.caption,
-        lineHeight = FontSize.caption * 1.50f,
+        fontSize = scale.caption,
+        lineHeight = scale.caption * 1.50f,
     ),
 )
 
@@ -109,9 +114,11 @@ private fun JmPalette.toColorScheme(dark: Boolean): ColorScheme {
         onSecondaryContainer = onAccentContainer,
         tertiary = accent,
         onTertiary = accentFg,
-        background = backdrop.first(),
+        // 实心风格（Material / Miuix）用 surfaceMica 当底：它们的 backdrop 已经是实色，
+        // 而玻璃风格的 backdrop 是渐变的第一层，两者在这里含义一致
+        background = surfaceMica,
         onBackground = text,
-        surface = if (dark) surfaceMica else backdrop.first(),
+        surface = surfaceMica,
         onSurface = text,
         surfaceVariant = if (dark) surface2 else surface1,
         onSurfaceVariant = textSecondary,
@@ -122,7 +129,7 @@ private fun JmPalette.toColorScheme(dark: Boolean): ColorScheme {
         surfaceContainerHighest = surface3,
         surfaceTint = accent,
         inverseSurface = text,
-        inverseOnSurface = backdrop.first(),
+        inverseOnSurface = surface1,
         outline = stroke,
         outlineVariant = strokeStrong,
         error = error,
@@ -159,18 +166,20 @@ private fun JmPalette.withDynamicAccent(dynamic: ColorScheme, dark: Boolean): Jm
 fun JmTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
+    style: ThemeStyle = ThemeStyle.Default,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val useDynamic = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val spec = Styles.of(style)
 
     val palette = run {
-        val blog = if (darkTheme) DarkPalette else LightPalette
+        val base = paletteFor(style, darkTheme)
         if (!useDynamic) {
-            blog
+            base
         } else {
             val dyn = if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-            blog.withDynamicAccent(dyn, darkTheme)
+            base.withDynamicAccent(dyn, darkTheme)
         }
     }
 
@@ -185,19 +194,34 @@ fun JmTheme(
         }
     }
 
-    CompositionLocalProvider(LocalJmPalette provides palette) {
+    CompositionLocalProvider(
+        LocalJmPalette provides palette,
+        LocalJmSpec provides spec,
+    ) {
         MaterialTheme(
             colorScheme = palette.toColorScheme(darkTheme),
-            typography = JmTypography,
+            typography = typographyOf(spec.type),
             content = content,
         )
     }
 }
 
-/** 便捷读取当前配色，等价于 `LocalJmPalette.current`。 */
+/** 便捷读取当前配色与风格，等价于 `LocalJmPalette.current` / `LocalJmSpec.current`。 */
 object JmTheme {
     val colors: JmPalette
         @Composable
         @ReadOnlyComposable
         get() = LocalJmPalette.current
+
+    /** 当前风格的表面/圆角/字体/动效参数。 */
+    val spec: JmSpec
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalJmSpec.current
+
+    /** 当前风格的动效时长（毫秒）。 */
+    val motion: MotionSpec
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalJmSpec.current.motion
 }

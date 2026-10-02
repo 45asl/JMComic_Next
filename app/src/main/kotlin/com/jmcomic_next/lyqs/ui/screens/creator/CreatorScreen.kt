@@ -54,6 +54,7 @@ import com.jmcomic_next.lyqs.ui.components.GlassTopBar
 import com.jmcomic_next.lyqs.ui.components.LoadMoreFooter
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.components.MessageState
+import com.jmcomic_next.lyqs.ui.theme.jmShape
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.ui.theme.Spacing
@@ -383,7 +384,7 @@ private fun AuthorCard(author: CreatorAuthor, avatarUrl: String?, onClick: () ->
     GlassSurface(
         modifier = Modifier.fillMaxWidth(),
         level = GlassLevel.Card,
-        shape = RoundedCornerShape(Radius.md),
+        shape = jmShape(Radius.md),
         onClick = onClick,
     ) {
         Row(
@@ -425,14 +426,14 @@ private fun WorkCard(work: CreatorWork, coverUrl: String?, onClick: () -> Unit) 
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(3f / 4f)
-                .clip(RoundedCornerShape(Radius.md))
+                .clip(jmShape(Radius.md))
                 .background(c.surfaceSunken),
         ) {
             AsyncImage(
                 model = coverUrl,
                 contentDescription = work.title,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(Radius.md)),
+                modifier = Modifier.fillMaxSize().clip(jmShape(Radius.md)),
             )
         }
         Text(

@@ -2,6 +2,7 @@ package com.jmcomic_next.lyqs.data.prefs
 
 import android.content.Context
 import androidx.core.content.edit
+import com.jmcomic_next.lyqs.ui.theme.ThemeStyle
 import com.jmcomic_next.lyqs.data.remote.JmJson
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -39,6 +40,16 @@ class AppPrefs(context: Context) {
         get() = runCatching { ThemeMode.valueOf(sp.getString(KEY_THEME, null) ?: "") }
             .getOrDefault(ThemeMode.System)
         set(value) = sp.edit { putString(KEY_THEME, value.name) }
+
+    /**
+     * 界面风格。
+     *
+     * 默认 [ThemeStyle.Default]（WindowGlass）—— 那是本应用原来的样子。
+     * 四套风格见 [ThemeStyle]：它们换的不只是配色，还有圆角、表面工艺、字重与动效。
+     */
+    var themeStyle: ThemeStyle
+        get() = ThemeStyle.fromName(sp.getString(KEY_STYLE, null))
+        set(value) = sp.edit { putString(KEY_STYLE, value.name) }
 
     /** 是否启用 Material You 动态取色。默认关闭，理由见 JmTheme 的注释。 */
     var dynamicColor: Boolean
@@ -86,6 +97,7 @@ class AppPrefs(context: Context) {
         val historySerializer = ListSerializer(String.serializer())
 
         const val KEY_THEME = "theme_mode"
+        const val KEY_STYLE = "theme_style"
         const val KEY_DYNAMIC = "dynamic_color"
         const val KEY_READER_MODE = "reader_mode"
         const val KEY_SEARCH_HISTORY = "search_history"

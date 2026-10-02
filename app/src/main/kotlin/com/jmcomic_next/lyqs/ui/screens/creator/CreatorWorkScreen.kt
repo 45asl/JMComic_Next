@@ -41,6 +41,7 @@ import com.jmcomic_next.lyqs.ui.components.ErrorBox
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.components.MessageState
+import com.jmcomic_next.lyqs.ui.theme.jmShape
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.ui.theme.Spacing
@@ -171,7 +172,7 @@ fun CreatorWorkScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = Spacing.lg)
-                                .clip(RoundedCornerShape(Radius.sm)),
+                                .clip(jmShape(Radius.sm)),
                         )
                     }
                 }

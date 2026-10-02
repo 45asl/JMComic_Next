@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jmcomic_next.lyqs.data.remote.dto.SeriesItem
+import com.jmcomic_next.lyqs.ui.theme.jmShape
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.ui.theme.Spacing
@@ -77,7 +78,7 @@ fun ChapterPickerDialog(
                     val number = safePage * chunkSize + index + 1
                     val isCurrent = chapter.id == currentChapterId
                     Surface(
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.xs),
+                        shape = jmShape(Radius.xs),
                         // 当前话用强调色底标出：翻页后一眼能找到「我在哪」
                         color = if (isCurrent) c.accentSoft else c.surface1,
                         onClick = { onPick(chapter.id) },

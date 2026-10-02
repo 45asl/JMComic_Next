@@ -41,6 +41,7 @@ import com.jmcomic_next.lyqs.ui.components.ErrorBox
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.components.MessageState
+import com.jmcomic_next.lyqs.ui.theme.jmShape
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.ui.theme.Spacing
@@ -183,7 +184,7 @@ fun TagFavoritesScreen(
             ) {
                 items(state.tags, key = { it.tag }) { item ->
                     Surface(
-                        shape = RoundedCornerShape(Radius.xs),
+                        shape = jmShape(Radius.xs),
                         color = c.surface1,
                         onClick = { onOpenTag(item.tag) },
                         modifier = Modifier.fillMaxWidth(),
@@ -250,7 +251,7 @@ fun TagPickerDialog(
                     tags.forEach { tag ->
                         val isSelected = selected.contains(tag)
                         Surface(
-                            shape = RoundedCornerShape(Radius.xs),
+                            shape = jmShape(Radius.xs),
                             color = if (isSelected) c.accentSoft else c.surface1,
                             onClick = {
                                 if (isSelected) selected.remove(tag) else selected.add(tag)
