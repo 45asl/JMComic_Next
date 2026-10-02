@@ -77,12 +77,31 @@ data class SearchPayload(
     @Serializable(with = FlexStringOrNull::class) val redirectAid: String? = null,
 )
 
-/** 「查看更多」响应（`InterFace.ts` 的 `MoreListResponse.data`）。数组键是 `list`。 */
+/**
+ * 「查看更多」响应（`InterFace.ts` 的 `MoreListResponse.data`）。
+ *
+ * 数组键**不统一**，实测两种都出现过：
+ *  - `promote_list` / `week/filter`：`{total, list}`
+ *  - `album_tracking`（追更列表）：**`{item, totalCnt}`** —— 键名完全是另一套
+ *
+ * 只认 `list` 的话，追更列表会静默显示成 0 条（用过一次账号才发现）。
+ * 因此两个键都接，取非空的那个；总数同理。
+ */
 @Serializable
 data class MoreListPayload(
     @Serializable(with = FlexStringOrNull::class) val total: String? = null,
     val list: List<ListItem> = emptyList(),
-)
+    /** 追更列表用的键。 */
+    val item: List<ListItem> = emptyList(),
+    @SerialName("totalCnt")
+    @Serializable(with = FlexStringOrNull::class) val totalCount: String? = null,
+) {
+    /** 实际条目：优先 `list`，它为空时用 `item`。 */
+    val items: List<ListItem> get() = list.ifEmpty { item }
+
+    /** 总条数，两个键名都看。 */
+    val totalEither: Int get() = total?.toIntOrNull() ?: totalCount?.toIntOrNull() ?: 0
+}
 
 /**
  * 漫画详情（`album` 接口）。
@@ -496,14 +515,26 @@ data class TagItem(
     val tag: String = "",
 )
 
-/** 整部作品的下载信息（`album_download_2/<id>`）。 */
+/**
+ * 整部作品的下载信息（`album_download_2/<id>`）。
+ *
+ * **成功的判据是「拿到了下载地址」，不是 `status`** —— 实测成功响应里根本没有 `status`：
+ * ```
+ * {"title":"…","fileSize":"0.7 MB","download_url":"https://dl2025…/download_zip?md5=…","img_url":"…"}
+ * ```
+ * 而失败时才会出现 `status`：未登录是 `{"status":"0","msg":"請先登入"}`。
+ * 按 `status == "1"` 判断会把成功的响应也当成失败（我踩过：界面报「暂时不能下载」）。
+ */
 @Serializable
 data class DownloadPayload(
-    /** `"1"` 成功；实测未登录时是 `"0"` + `msg`。 */
+    /** 只在失败时出现。 */
     @Serializable(with = FlexStringOrNull::class) val status: String? = null,
     val msg: String? = null,
     val title: String? = null,
     @SerialName("download_url") val downloadUrl: String? = null,
+    /** 形如 `"0.7 MB"`，展示用。 */
+    @SerialName("fileSize") val fileSize: String? = null,
+    @SerialName("img_url") val imgUrl: String? = null,
 ) {
-    val isOk: Boolean get() = status == "1" && !downloadUrl.isNullOrBlank()
+    val isOk: Boolean get() = !downloadUrl.isNullOrBlank()
 }

@@ -60,6 +60,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import coil3.compose.AsyncImage
 import com.jmcomic_next.lyqs.data.JmRepository
+import com.jmcomic_next.lyqs.data.trackedOrFalse
 import com.jmcomic_next.lyqs.data.prefs.ReadProgressStore
 import com.jmcomic_next.lyqs.data.remote.dto.AlbumDetail
 import com.jmcomic_next.lyqs.data.remote.dto.FavoriteFolder
@@ -261,17 +262,18 @@ class DetailViewModel(
             onNeedLogin("追更需要登录")
             return
         }
-        val before = _state.value.tracked
-        _state.update { it.copy(tracked = !before) }
         viewModelScope.launch {
             val result = runCatching { repo.toggleTracking(comicId) }
             val action = result.getOrNull()
             val ok = result.isSuccess && (action == null || action.isOk)
+            val message = action?.msg
             _state.update {
                 it.copy(
-                    // 失败就退回原状态，并把服务端的话原样显示
-                    tracked = if (ok) it.tracked else before,
-                    actionNotice = action?.msg ?: result.exceptionOrNull()?.message
+                    // **不乐观翻转**：这个接口返回的就是一句人话（「已追踪!」/「已取消追踪!」），
+                    // 拿它当权威最稳。原先按「本地取反」写，一旦本地状态与服务器不一致
+                    // （比如状态查询不可靠时），界面就会显示成与实际相反的状态。
+                    tracked = if (ok && message != null) message.trackedOrFalse() else it.tracked,
+                    actionNotice = message ?: result.exceptionOrNull()?.message
                         ?: if (ok) "已更新追更状态" else "追更失败",
                 )
             }
@@ -334,7 +336,12 @@ class DetailViewModel(
                 }
 
                 else -> {
-                    _state.update { it.copy(actionNotice = "已开始下载${payload.title?.let { t -> "：$t" }.orEmpty()}") }
+                    val label = buildString {
+                        append("已开始下载")
+                        payload.title?.takeIf { it.isNotBlank() }?.let { append("：$it") }
+                        payload.fileSize?.takeIf { it.isNotBlank() }?.let { append("（$it）") }
+                    }
+                    _state.update { it.copy(actionNotice = label) }
                     onReady(payload.downloadUrl.orEmpty(), payload.title.orEmpty())
                 }
             }

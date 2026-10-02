@@ -6,6 +6,7 @@ import com.jmcomic_next.lyqs.data.crypto.JmCrypto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.DeserializationStrategy
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -82,8 +83,20 @@ class JmRemote(
         params: Map<String, String> = emptyMap(),
     ): T {
         val url = session.apiUrl(path)
-        return call(url, deserializer) { api.get(url, params) }
+        // GET 可以安全重发：解不开多半是时间戳过期
+        return call(url, deserializer, retryable = true) { api.get(url, params) }
     }
+
+    /**
+     * GET 一个接口并把**解密后的原文**交给调用方。
+     *
+     * 给形态不确定的接口用：实测有些接口的 data 是一句人话（"已追踪!"），
+     * 硬按某个 DTO 反序列化会抛解析错，而那句人话本身就是要显示给用户的内容。
+     */
+    suspend fun getRaw(path: String, params: Map<String, String> = emptyMap()): String =
+        get(path, JsonElement.serializer(), params).let { el ->
+            (el as? JsonPrimitive)?.content ?: el.toString()
+        }
 
     /** POST 一个业务接口并解析成 [T]。 */
     suspend fun <T> post(
@@ -92,12 +105,16 @@ class JmRemote(
         params: Map<String, String> = emptyMap(),
     ): T {
         val url = session.apiUrl(path)
-        return call(url, deserializer) { api.post(url, params) }
+        // POST **不重发**：这个服务端有大量「点一下改一次状态」的接口（追更、收藏、
+        // 发表评论…），重发一次就是把用户刚做的操作撤销或重复。解不开就报错，
+        // 让用户自己决定要不要再点。
+        return call(url, deserializer, retryable = false) { api.post(url, params) }
     }
 
     private suspend fun <T> call(
         url: String,
         deserializer: DeserializationStrategy<T>,
+        retryable: Boolean,
         fetch: suspend () -> Response<Envelope>,
     ): T = withContext(Dispatchers.IO) {
         val first = runCatching { fetch() }.getOrElse { throw it.toJmException() }
@@ -109,6 +126,10 @@ class JmRemote(
         }
 
         resolvePayload(envelope, first)?.let { return@withContext decode(it, deserializer) }
+
+        if (!retryable) {
+            throw JmException("响应解密失败，且该请求不可重发（写操作）", JmException.Kind.Decrypt)
+        }
 
         // 解不开：可能是时间戳过期（服务端按时间戳校验密钥）。换一个时间戳原样重试一次。
         session.refresh()

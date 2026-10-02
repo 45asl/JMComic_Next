@@ -318,9 +318,9 @@ class JmRepository(
      */
     suspend fun toggleFavorite(aid: String): ActionResult = remote.post(
         JmPaths.FAVORITE,
-        ActionResult.serializer(),
+        JsonElement.serializer(),
         mapOf("aid" to aid),
-    )
+    ).toActionResult()
 
     /**
      * 收藏列表。
@@ -519,17 +519,15 @@ class JmRepository(
      * 因此这里宽容地判真：只有明确表示「真」才算追更，其余一律按未追更处理 ——
      * 反过来（把失败当已追更）会让用户以为自己关注过了。
      */
-    suspend fun isTracked(aid: String): Boolean {
-        val el = remote.get(JmPaths.SERTRACKING, JsonElement.serializer(), mapOf("id" to aid))
-        return el.looksTrue()
-    }
+    suspend fun isTracked(aid: String): Boolean =
+        remote.getRaw(JmPaths.SERTRACKING, mapOf("id" to aid)).trackedOrFalse()
 
     /** 追更开关。**同一个 POST 既是追更也是取关**，响应里带一句结果文案。 */
     suspend fun toggleTracking(aid: String): ActionResult = remote.post(
         JmPaths.SERTRACKING,
-        ActionResult.serializer(),
+        JsonElement.serializer(),
         mapOf("id" to aid),
-    )
+    ).toActionResult()
 
     /** 追更列表（上限 500）。注意这个接口是 **POST**。 */
     suspend fun trackingList(page: Int = 1): PagedList {
@@ -538,7 +536,8 @@ class JmRepository(
             MoreListPayload.serializer(),
             mapOf("page" to page.toString()),
         )
-        return PagedList(payload.list, payload.total?.toIntOrNull() ?: 0)
+        // 这个接口的键是 `item` / `totalCnt`（见 MoreListPayload 的说明）
+        return PagedList(payload.items, payload.totalEither)
     }
 
     /** 收藏的标签（上限 50）。 */
@@ -548,9 +547,9 @@ class JmRepository(
     /** 收藏标签的增删。`type` 取 `add` / `remove`，`tags` 在请求里是**逗号分隔**的字符串。 */
     suspend fun updateFavoriteTags(type: String, tags: List<String>): ActionResult = remote.post(
         JmPaths.TAGS_FAVORITE_UPDATE,
-        ActionResult.serializer(),
+        JsonElement.serializer(),
         mapOf("type" to type, "tags" to tags.joinToString(",")),
-    )
+    ).toActionResult()
 
     /**
      * 整部作品的下载信息。
@@ -568,23 +567,23 @@ class JmRepository(
     suspend fun sendComment(aid: String, comment: String, commentId: String? = null): ActionResult =
         remote.post(
             JmPaths.COMMENT_SEND,
-            ActionResult.serializer(),
+            JsonElement.serializer(),
             buildMap {
                 put("comment", comment)
                 put("aid", aid)
                 commentId?.takeIf { it.isNotBlank() }?.let { put("comment_id", it) }
             },
-        )
+        ).toActionResult()
 
     /** 删除自己发的评论。 */
     suspend fun deleteComment(commentId: String, aid: String? = null): ActionResult = remote.post(
         JmPaths.COMMENT_DELETE,
-        ActionResult.serializer(),
+        JsonElement.serializer(),
         buildMap {
             put("comment_id", commentId)
             aid?.takeIf { it.isNotBlank() }?.let { put("aid", it) }
         },
-    )
+    ).toActionResult()
 
     /** 分类树与标签组。 */
     suspend fun categories(): CategoriesPayload = remote.get(
@@ -629,7 +628,7 @@ class JmRepository(
         JmPaths.PROMOTE_LIST,
         MoreListPayload.serializer(),
         mapOf("id" to id, "page" to page.toString()),
-    ).let { PagedList(it.list, it.total?.toIntOrNull() ?: 0) }
+    ).let { PagedList(it.items, it.totalEither) }
 
     /**
      * 连载更新表（每周更新）。
@@ -765,23 +764,6 @@ class JmRepository(
             total = data?.total?.toIntOrNull() ?: 0,
         )
 
-    /**
-     * 判断追更状态。
-     *
-     * 只有明确的真值才算真：`true` / `"true"` / `"1"`，或对象里 `track`/`status` 明确表示已追更。
-     * 把失败响应当成「已追更」比反过来危险 —— 用户会以为自己早就关注了，于是再也不会去点。
-     */
-    private fun JsonElement.looksTrue(): Boolean = when (this) {
-        is JsonPrimitive -> content == "1" || content.equals("true", ignoreCase = true) ||
-            content.equals("yes", ignoreCase = true)
-        is JsonObject -> {
-            val track = this["track"] ?: this["status"] ?: this["is_track"]
-            track?.jsonPrimitive?.content?.let {
-                it == "1" || it.equals("true", ignoreCase = true) || it.equals("ok", ignoreCase = true)
-            } ?: false
-        }
-        else -> false
-    }
 
     /** 宽容地把 `total` 读成 Int：服务端有时给字符串、有时给数字、有时干脆不给。 */
     private fun JsonElement?.asIntOrZero(): Int =
@@ -810,5 +792,47 @@ class JmRepository(
             authStore: AuthStore,
             session: JmSession = JmSession(),
         ): JmRepository = JmRepository(JmRemote(session, authStore), authStore)
+    }
+}
+
+/**
+ * 把动作类接口的 `data` 归一成 ActionResult。
+ *
+ * 这个服务端的动作响应**有两种形态**，实测都出现过：
+ *  - 对象：`{status:"ok", type:"add", msg:"..."}`
+ *  - **一整句话**：`"已追踪!"` / `"已取消追踪!"`
+ *
+ * 只按对象解析的话，第二种会抛解析错 —— 用户刚做的操作其实成功了，
+ * 界面却报「响应解析失败」，而且（在重试逻辑下）请求还会被重发一次。
+ * 纯文本一律当作「成功 + 这句话就是提示」，因为它本来就是给用户看的内容。
+ */
+internal fun JsonElement?.toActionResult(): ActionResult = when (this) {
+    null -> ActionResult()
+    is JsonObject -> runCatching {
+        JmJson.decodeFromJsonElement(ActionResult.serializer(), this)
+    }.getOrElse { ActionResult() }
+
+    is JsonPrimitive -> ActionResult(status = "ok", msg = content)
+    else -> ActionResult()
+}
+
+/**
+ * 判断追更状态。
+ *
+ * 输入是接口返回的**原文**（可能是一句人话，如「已追踪!」），因此按关键字判读：
+ * 含「取消」为假，含「追踪/追更」为真，`true`/`1` 为真。
+ * 把失败响应当成「已追更」比反过来危险 —— 用户会以为自己早就关注了，于是再也不会去点。
+ */
+internal fun String.trackedOrFalse(): Boolean {
+    val text = trim().trim('"')
+    return when {
+        text.isEmpty() -> false
+        text.contains("取消") -> false
+        text.equals("true", ignoreCase = true) || text == "1" -> true
+        text.equals("false", ignoreCase = true) || text == "0" -> false
+        // 实测未追更/已追更都可能回一句中文文案，含「追踪/追更」即视为已追更
+        text.contains("追踪") || text.contains("追更") -> true
+        text.contains("\"track\":true") || text.contains("\"is_track\":true") -> true
+        else -> false
     }
 }
