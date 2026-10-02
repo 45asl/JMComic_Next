@@ -27,8 +27,9 @@ android {
         applicationId = "com.jmcomic_next.lyqs"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // 预发布版本：周刊 / 画师与作品库 / 随机推荐 + 一轮缺陷修复
+        versionCode = 2
+        versionName = "1.1.0-beta.1"
     }
 
     signingConfigs {
