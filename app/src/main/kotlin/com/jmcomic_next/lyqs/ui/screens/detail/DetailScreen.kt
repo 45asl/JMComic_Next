@@ -231,9 +231,11 @@ class DetailViewModel(
      * 点赞数是服务端计数，这里只做**乐观 +1**，不做本地持久化 ——
      * 真正的口径以服务端为准，下次拉详情会被纠正。
      */
-    fun like(onNeedLogin: () -> Unit) {
+    fun like(onNeedLogin: (String) -> Unit) {
         if (!repo.auth.isLoggedIn) {
-            onNeedLogin()
+            // 直接把「为什么」交给调用方显示：只说「去登录」而不说原因，
+            // 用户不知道这次点击是没生效还是等登录后会自动补上
+            onNeedLogin("点赞需要登录")
             return
         }
         val detail = _state.value.detail ?: return
@@ -280,10 +282,10 @@ class DetailViewModel(
      * 收藏结果以服务端返回的 `type` 为准（`remove` 即已取消，`add`/`move`/`edit` 即已收藏），
      * 而不是本地取反：这样即使本地状态早已过时（例如在别处操作过），界面也会被纠正回真实状态。
      */
-    fun toggleFavorite(onNeedLogin: () -> Unit) {
+    fun toggleFavorite(onNeedLogin: (String) -> Unit) {
         if (_state.value.togglingFavorite) return
         if (!repo.auth.isLoggedIn) {
-            onNeedLogin()
+            onNeedLogin("收藏需要登录")
             return
         }
         _state.update { it.copy(togglingFavorite = true) }
@@ -330,7 +332,7 @@ fun DetailScreen(
     onOpenComic: (String) -> Unit,
     onReadChapter: (String) -> Unit,
     onOpenTag: (String) -> Unit,
-    onNeedLogin: () -> Unit,
+    onNeedLogin: (String) -> Unit,
     onOpenComments: () -> Unit,
     modifier: Modifier = Modifier,
 ) {

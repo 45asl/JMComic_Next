@@ -68,9 +68,10 @@ private enum class MainTab(
 
 private const val SEARCH_PATTERN = "search?q={q}"
 private const val ARG_QUERY = "q"
+private const val ARG_REASON = "reason"
 private const val ROUTE_DETAIL = "detail/{id}"
 private const val ROUTE_READ = "read/{comicId}/{chapterId}"
-private const val ROUTE_AUTH = "auth"
+private const val ROUTE_AUTH = "auth?reason={reason}"
 private const val ROUTE_FAVORITES = "favorites"
 private const val ROUTE_HISTORY = "history"
 private const val ROUTE_COMMENTS = "comments/{aid}"
@@ -89,6 +90,9 @@ private fun moreFor(sectionId: String, title: String): String =
 
 /** 按标签打开搜索页。分类页与详情页的标签都走这里。 */
 private fun searchFor(tag: String): String = "search?$ARG_QUERY=${Uri.encode(tag)}"
+
+/** 打开登录页，并带上「为什么需要登录」。 */
+private fun authFor(reason: String): String = "auth?$ARG_REASON=${Uri.encode(reason)}"
 
 /** 前进入栈的统一写法：加 `launchSingleTop` 免得连点两下压出两层同样的页面。 */
 private fun NavHostController.push(route: String) = navigate(route) { launchSingleTop = true }
@@ -219,7 +223,7 @@ fun JmNavHost(
                     onDynamicColorChange = onDynamicColorChange,
                     readerMode = readerMode,
                     onReaderModeChange = onReaderModeChange,
-                    onLogin = { nav.push(ROUTE_AUTH) },
+                    onLogin = { nav.push(authFor("")) },
                     onLogout = {
                         // 登出要走接口，但本地登出不依赖它成功（见 JmRepository.logout）
                         scope.launch { repo.logout() }
@@ -229,11 +233,20 @@ fun JmNavHost(
                 )
             }
 
-            composable(ROUTE_AUTH) {
+            composable(
+                route = ROUTE_AUTH,
+                arguments = listOf(
+                    navArgument(ARG_REASON) {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                ),
+            ) { backStack ->
                 AuthScreen(
                     onBack = { nav.popBackStack() },
                     // 登录成功后退回来源页（详情或我的），由它们自行刷新
                     onLoggedIn = { nav.popBackStack() },
+                    reason = backStack.arguments?.getString(ARG_REASON).orEmpty(),
                 )
             }
 
@@ -242,7 +255,7 @@ fun JmNavHost(
                     kind = AccountListKind.Favorites,
                     onBack = { nav.popBackStack() },
                     onOpenComic = { id -> nav.push("detail/$id") },
-                    onLogin = { nav.push(ROUTE_AUTH) },
+                    onLogin = { nav.push(authFor("")) },
                 )
             }
 
@@ -261,7 +274,7 @@ fun JmNavHost(
                     kind = AccountListKind.History,
                     onBack = { nav.popBackStack() },
                     onOpenComic = { id -> nav.push("detail/$id") },
-                    onLogin = { nav.push(ROUTE_AUTH) },
+                    onLogin = { nav.push(authFor("")) },
                 )
             }
 
@@ -277,7 +290,7 @@ fun JmNavHost(
                     // 阅读页需要作品 id：它要拿系列目录来做上一话/下一话切换
                     onReadChapter = { chapterId -> nav.push("read/$id/$chapterId") },
                     onOpenTag = { tag -> nav.push(searchFor(tag)) },
-                    onNeedLogin = { nav.push(ROUTE_AUTH) },
+                    onNeedLogin = { reason -> nav.push(authFor(reason)) },
                     onOpenComments = { nav.push("comments/$id") },
                 )
             }

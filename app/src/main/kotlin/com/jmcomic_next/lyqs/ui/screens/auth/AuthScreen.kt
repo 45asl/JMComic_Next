@@ -170,6 +170,8 @@ fun AuthScreen(
     onBack: () -> Unit,
     onLoggedIn: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 为什么来到这一页（例如「收藏需要登录」）。由触发登录的页面传入。 */
+    reason: String = "",
 ) {
     val repo = LocalRepository.current
     val vm: AuthViewModel = viewModel(
@@ -206,6 +208,17 @@ fun AuthScreen(
                 }
             },
         )
+
+        // 说清楚是为什么来的：用户点的是「收藏」，直接落到一个登录页而不给原因，
+        // 就不知道那次点击是没生效、还是登录后会自动补上（目前不会，需要再点一次）
+        if (reason.isNotBlank()) {
+            Text(
+                text = "$reason · 登录后请再点一次刚才那个按钮",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.accent,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+            )
+        }
 
         Column(
             modifier = Modifier

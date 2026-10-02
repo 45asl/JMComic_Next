@@ -344,16 +344,27 @@ private fun ServerCard() {
     val c = JmTheme.colors
     var settings by remember { mutableStateOf<JmSettings?>(null) }
     var checked by remember { mutableStateOf(false) }
+    /**
+     * 读取失败的原因。
+     *
+     * 与「读到了、但服务端没给这个字段」必须分开显示：前者是网络问题（重试可能就好），
+     * 后者是一条协议事实（服务端确实不下发）。两者都写成「未提供」，用户会以为
+     * 服务端没这个字段，于是根本不会想到去重试。
+     */
+    var failure by remember { mutableStateOf<String?>(null) }
     // 用递增的 key 驱动重读：LaunchedEffect(Unit) 只会跑一次，
     // 若只把状态清空而不换 key，按钮点了不会有任何反应
     var reloadKey by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(reloadKey) {
         checked = false
-        settings = runCatching {
+        failure = null
+        val result = runCatching {
             repo.bootstrap()
             repo.settings()
-        }.getOrNull()
+        }
+        settings = result.getOrNull()
+        failure = result.exceptionOrNull()?.message
         checked = true
     }
 
@@ -362,7 +373,23 @@ private fun ServerCard() {
     val aligned = serverVersion == null || serverVersion == clientVersion
 
     SettingCard(title = "服务端") {
-        InfoRow("服务端对应官方版本", serverVersion ?: if (checked) "未提供" else "读取中…")
+        InfoRow(
+            "服务端对应官方版本",
+            serverVersion ?: when {
+                !checked -> "读取中…"
+                failure != null -> "读取失败"
+                else -> "未提供"
+            },
+        )
+
+        if (failure != null) {
+            Text(
+                text = failure.orEmpty(),
+                style = MaterialTheme.typography.labelSmall,
+                color = c.error,
+                modifier = Modifier.padding(top = Spacing.xs),
+            )
+        }
         InfoRow("本客户端上报版本", clientVersion)
         InfoRow("协议对齐", if (aligned) "一致" else "可能已变化")
 
