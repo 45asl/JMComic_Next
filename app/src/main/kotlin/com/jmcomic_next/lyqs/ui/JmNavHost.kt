@@ -5,6 +5,7 @@ import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +39,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -180,64 +186,67 @@ fun JmNavHost(
     var backProgress by remember { mutableFloatStateOf(0f) }
     val canGoBack = nav.previousBackStackEntry != null
 
+    // 底栏实际占多大高度：**量**而不是写常数 —— 贴底/悬浮两套高度不同，
+    // 悬浮那套还要加上让开系统手势条的 padding。
+    var barInsetPx by remember { mutableIntStateOf(0) }
+    val barInset = with(LocalDensity.current) { barInsetPx.toDp() }
+
+    // 共享元素（"触发前位置 → 触发后位置"）必须活在同一个 SharedTransitionLayout 里
+    SharedTransitionLayout {
+    CompositionLocalProvider(LocalSharedTransitionScope provides this) {
     Scaffold(
         containerColor = Color.Transparent,
         contentColor = JmTheme.colors.text,
         bottomBar = {
             if (showBottomBar) {
-                if (uiOptions.floatingBottomBar) {
-                    FloatingBottomBar(currentRoute = currentRoute, onSelect = switchTab)
-                } else {
-                    DockedBottomBar(currentRoute = currentRoute, onSelect = switchTab)
+                Box(Modifier.onSizeChanged { barInsetPx = it.height }) {
+                    if (uiOptions.floatingBottomBar) {
+                        FloatingBottomBar(currentRoute = currentRoute, onSelect = switchTab)
+                    } else {
+                        DockedBottomBar(currentRoute = currentRoute, onSelect = switchTab)
+                    }
                 }
             }
         },
     ) { insets ->
+        CompositionLocalProvider(
+            LocalBottomBarInset provides if (showBottomBar) barInset else 0.dp,
+        ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    // 跟手退后：轻微缩小 + 左移 + 变淡，进度由系统手势的 progress 驱动
+                    // 跟手后退：页面**朝着"返回之后的位置"退**（缩小 + 淡出），
+                    // 而不是朝某个方向平移。手势取消时按同一路径回去，
+                    // 所以"取消"与"完成"两段动作是连续的，不会突然换一个方向。
                     val p = if (uiOptions.predictiveBack) backProgress else 0f
-                    scaleX = 1f - 0.06f * p
-                    scaleY = 1f - 0.06f * p
-                    translationX = -size.width * 0.12f * p
-                    alpha = 1f - 0.18f * p
+                    scaleX = 1f - 0.08f * p
+                    scaleY = 1f - 0.08f * p
+                    alpha = 1f - 0.35f * p
                 },
         ) {
             NavHost(
                 navController = nav,
                 startDestination = MainTab.Home.route,
-                modifier = Modifier.fillMaxSize().padding(bottom = insets.calculateBottomPadding()),
-                // 页面切换动画。以前一个都没配，用的是导航库的默认淡入 ——
-                // 配上偏短的时长就显得「啪」地换掉，这正是「生硬」的来源。
-                // 曲线、时长与位移比例都随动效性格走（标准 / Plasma）。
-                enterTransition = {
-                    fadeIn(tween(motion.base, easing = motion.enter)) +
-                        slideInHorizontally(tween(motion.base, easing = motion.enter)) {
-                            (it * motion.slide).toInt()
-                        }
-                },
-                exitTransition = {
-                    fadeOut(tween(motion.fast, easing = motion.exit)) +
-                        slideOutHorizontally(tween(motion.base, easing = motion.exit)) {
-                            -(it * motion.slide * 0.5f).toInt()
-                        }
-                },
-                popEnterTransition = {
-                    fadeIn(tween(motion.base, easing = motion.enter)) +
-                        slideInHorizontally(tween(motion.base, easing = motion.enter)) {
-                            -(it * motion.slide * 0.5f).toInt()
-                        }
-                },
-                popExitTransition = {
-                    fadeOut(tween(motion.fast, easing = motion.exit)) +
-                        slideOutHorizontally(tween(motion.base, easing = motion.exit)) {
-                            (it * motion.slide).toInt()
-                        }
-                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    // 有底栏时**不给它留白**：内容从底栏后面穿过去，这才是「悬浮」。
+                    // 页面自己按 LocalBottomBarInset 在列表底部留出可滚出的空间。
+                    // 没有底栏的页面（详情/阅读等）仍按原来的方式让开系统手势条。
+                    .padding(bottom = if (showBottomBar) 0.dp else insets.calculateBottomPadding()),
+                // 页面级转场**只做淡入淡出，不做方向性位移**。
+                //
+                // 理由就是这次的规则：动画由「触发前的位置 → 触发后的位置」决定，
+                // 而整屏页面触发前是整屏、触发后还是整屏 —— **位移为零**，
+                // 所以它没有可依据的位置，也就不该硬编一个"从右边滑进来"的方向。
+                // 真正的位移交给共享元素（封面），它两处都有位置，见 jmSharedElement。
+                enterTransition = { fadeIn(tween(motion.base, easing = motion.enter)) },
+                exitTransition = { fadeOut(tween(motion.base, easing = motion.exit)) },
+                popEnterTransition = { fadeIn(tween(motion.base, easing = motion.enter)) },
+                popExitTransition = { fadeOut(tween(motion.base, easing = motion.exit)) },
             ) {
                 composable(MainTab.Home.route) {
+                    CompositionLocalProvider(LocalNavVisibilityScope provides this) {
                 HomeScreen(
                     dark = isDark,
                     onToggleTheme = {
@@ -250,14 +259,17 @@ fun JmNavHost(
                     },
                     onOpenWeek = { nav.push(ROUTE_WEEK) },
                 )
+                    }
             }
 
             composable(MainTab.Category.route) {
+                CompositionLocalProvider(LocalNavVisibilityScope provides this) {
                 CategoryScreen(
                     onOpenTag = { tag -> nav.push(searchFor(tag)) },
                     onOpenComic = { id -> nav.push("detail/$id") },
                     onOpenCreators = { nav.push(ROUTE_CREATOR) },
                 )
+                }
             }
 
             composable(
@@ -270,12 +282,14 @@ fun JmNavHost(
                     },
                 ),
             ) { backStack ->
-                MoreListScreen(
-                    sectionId = backStack.arguments?.getString(ARG_SECTION).orEmpty(),
-                    title = backStack.arguments?.getString(ARG_TITLE).orEmpty(),
-                    onBack = { nav.popBackStack() },
-                    onOpenComic = { id -> nav.push("detail/$id") },
-                )
+                CompositionLocalProvider(LocalNavVisibilityScope provides this) {
+                    MoreListScreen(
+                        sectionId = backStack.arguments?.getString(ARG_SECTION).orEmpty(),
+                        title = backStack.arguments?.getString(ARG_TITLE).orEmpty(),
+                        onBack = { nav.popBackStack() },
+                        onOpenComic = { id -> nav.push("detail/$id") },
+                    )
+                }
             }
 
             composable(
@@ -287,10 +301,12 @@ fun JmNavHost(
                     },
                 ),
             ) { backStack ->
-                SearchScreen(
-                    onOpenComic = { id -> nav.push("detail/$id") },
-                    initialQuery = backStack.arguments?.getString(ARG_QUERY).orEmpty(),
-                )
+                CompositionLocalProvider(LocalNavVisibilityScope provides this) {
+                    SearchScreen(
+                        onOpenComic = { id -> nav.push("detail/$id") },
+                        initialQuery = backStack.arguments?.getString(ARG_QUERY).orEmpty(),
+                    )
+                }
             }
 
             composable(MainTab.Profile.route) {
@@ -346,10 +362,12 @@ fun JmNavHost(
             }
 
             composable(ROUTE_WEEK) {
+                CompositionLocalProvider(LocalNavVisibilityScope provides this) {
                 WeekScreen(
                     onBack = { nav.popBackStack() },
                     onOpenComic = { id -> nav.push("detail/$id") },
                 )
+                }
             }
 
             composable(ROUTE_CREATOR) {
@@ -416,16 +434,18 @@ fun JmNavHost(
                 arguments = listOf(navArgument("id") { type = NavType.StringType }),
             ) { backStack ->
                 val id = backStack.arguments?.getString("id").orEmpty()
-                DetailScreen(
-                    comicId = id,
-                    onBack = { nav.popBackStack() },
-                    onOpenComic = { next -> nav.push("detail/$next") },
-                    // 阅读页需要作品 id：它要拿系列目录来做上一话/下一话切换
-                    onReadChapter = { chapterId -> nav.push("read/$id/$chapterId") },
-                    onOpenTag = { tag -> nav.push(searchFor(tag)) },
-                    onNeedLogin = { reason -> nav.push(authFor(reason)) },
-                    onOpenComments = { nav.push("comments/$id") },
-                )
+                CompositionLocalProvider(LocalNavVisibilityScope provides this) {
+                    DetailScreen(
+                        comicId = id,
+                        onBack = { nav.popBackStack() },
+                        onOpenComic = { next -> nav.push("detail/$next") },
+                        // 阅读页需要作品 id：它要拿系列目录来做上一话/下一话切换
+                        onReadChapter = { chapterId -> nav.push("read/$id/$chapterId") },
+                        onOpenTag = { tag -> nav.push(searchFor(tag)) },
+                        onNeedLogin = { reason -> nav.push(authFor(reason)) },
+                        onOpenComments = { nav.push("comments/$id") },
+                    )
+                }
             }
 
             composable(
@@ -449,6 +469,10 @@ fun JmNavHost(
             }
             }
         }
+        }
+
+        }
+    }
 
         // 预测性返回的注册位置很关键：`OnBackPressedDispatcher` 按**后加入优先**派发，
         // 而 NavHost 在组合时也注册了自己的返回回调。所以这一句必须写在 NavHost **之后** ——
@@ -529,17 +553,27 @@ private fun FloatingBottomBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            // 浮起来，但不压到系统手势条上
+            .navigationBarsPadding()
             .padding(
                 start = Spacing.lg,
                 end = Spacing.lg,
-                top = Spacing.xs,
-                bottom = Spacing.md,
+                top = Spacing.sm,
+                bottom = Spacing.sm,
             ),
     ) {
         GlassSurface(
             modifier = Modifier.fillMaxWidth(),
-            level = GlassLevel.Flyout,
-            shape = RoundedCornerShape(Radius.xl),
+            // 表面档位：**用中间那一档（Raised）**。
+            //   Flyout（原来）浅 85.9% / 深 90.2% —— 几乎把底盖死，是「不通透」的来源；
+            //   Card  浅 58.0% / 深  5.5% —— 又太透（深色下几乎只剩描边），反馈是"再实一点"。
+            //   Raised 浅 73.7% / 深 72.2% —— 两套主题都在「看得出是块玻璃、但底还在」的位置。
+            level = GlassLevel.Raised,
+            // **真胶囊**：半径取短边的一半（percent = 50），两端是半圆。
+            // 原来用 Radius.xl（12dp）—— 在 64dp 高的条上那只是「圆角矩形」，
+            // 用户说的「长方形填充」正是它：形状没成为胶囊 + 填充几乎不透明，
+            // 两件事加起来就是「陆上行舟」。
+            shape = RoundedCornerShape(percent = 50),
             tinted = true,
         ) {
             BoxWithConstraints(Modifier.fillMaxWidth().height(64.dp)) {
@@ -552,7 +586,7 @@ private fun FloatingBottomBar(
                         .width(itemWidth)
                         .fillMaxHeight()
                         .padding(horizontal = Spacing.xs, vertical = Spacing.sm)
-                        .clip(RoundedCornerShape(Radius.lg))
+                        .clip(RoundedCornerShape(percent = 50))
                         .background(c.accentSoft),
                 )
 
@@ -564,7 +598,7 @@ private fun FloatingBottomBar(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .clip(RoundedCornerShape(Radius.lg))
+                                .clip(RoundedCornerShape(percent = 50))
                                 .clickable { onSelect(tab) },
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,

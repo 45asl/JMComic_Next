@@ -542,8 +542,12 @@ private fun ReaderBottomBar(
                 .padding(horizontal = Spacing.md, vertical = Spacing.sm),
         ) {
             GlassSurface(
-                level = GlassLevel.Flyout,
-                shape = jmShape(Radius.xl),
+                // 悬浮版同样用真胶囊 + 较轻的一档表面（Flyout 是最不透明的一档，
+                // 那会让它看起来像一块实心板而不是浮起来的玻璃）。
+                // 这里比主导航的悬浮栏稍实一点（Raised 而非 Card）：它压在漫画页上，
+                // 底下可能是任意明暗的图，图标得保证看得清。
+                level = GlassLevel.Raised,
+                shape = RoundedCornerShape(percent = 50),
                 tinted = true,
                 modifier = Modifier.fillMaxWidth(),
             ) {

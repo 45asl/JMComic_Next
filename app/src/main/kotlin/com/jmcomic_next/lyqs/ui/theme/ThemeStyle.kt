@@ -97,20 +97,13 @@ data class SurfaceSpec(
     /** 上缘高光：玻璃厚度的反光，实心与平面化风格不需要。 */
     val innerHighlight: Boolean,
     /**
-     * **底**（环境渐变 / 壁纸）的高斯模糊半径，0dp = 不模糊。
-     *
-     * 这是真实生效的值，由 [com.jmcomic_next.lyqs.ui.components.AmbientBackdrop] 应用。
-     * 之所以模糊「底」而不是卡片自己：Compose 读不到卡片背后已经画好的内容，
-     * 做不了严格意义的 backdrop-filter，只能把整层底糊掉、再让半透明表面叠上去。
-     * 底本身若是平滑渐变，模糊看不出差别 —— 那是正常的，没有细节可糊；
-     * 有壁纸时这个值才真正决定「毛玻璃」的观感。
-     */
-    val backdropBlur: Dp,
-    /**
-     * 底的饱和度倍数（Acrylic 的 `saturate()`），1f = 不改。
+     * 底（壁纸）的饱和度倍数（Acrylic 的 `saturate()`），1f = 不改。
      *
      * 真实 Acrylic 在模糊之后还会提饱和度：模糊会把相邻像素平均掉，颜色随之发灰，
      * 不提饱和度的话玻璃看起来是脏的灰而不是通透的彩色。
+     *
+     * **只在用户自己开了壁纸模糊时才应用**（见 `backdropFrosting`）：
+     * 没有做磨砂的时候，壁纸就该原样不动 —— 这是 1.4.0 踩过的坑。
      */
     val backdropSaturate: Float,
     /**
@@ -161,6 +154,10 @@ enum class MotionStyle(val label: String, val tagline: String) {
         label = "Plasma",
         tagline = "仿 KDE Plasma：出慢入快、时长更长、位移更柔",
     ),
+    HyperOS(
+        label = "HyperOS",
+        tagline = "小米 HyperOS 的节奏：转场更长、收尾更缓，前后层次最明显",
+    ),
     ;
 
     companion object {
@@ -180,19 +177,11 @@ data class MotionSpec(
     val enter: Easing = JmEasing.fluent,
     /** 退出（消失）曲线。 */
     val exit: Easing = JmEasing.standard,
-    /**
-     * 页面切换的位移比例（相对屏宽），0 = 只淡入淡出。
-     *
-     * 这个值比时长更能决定「生硬还是柔和」：位移大就是「滑」进来的，
-     * 位移小 + 长收尾才是 KDE 那种「被推开、然后稳住」的感觉。
-     */
-    val slide: Float = 0.06f,
 ) {
     /**
      * 换成 Plasma 的时长与曲线，**保留该风格自己的弹性开关**。
      *
-     * 时长取 Kirigami 的单位：longDuration = 200ms、veryLongDuration = 400ms；
-     * 比原来（120/200/320）长约 25%，这是「不那么生硬」的一半来源，另一半是曲线。
+     * 时长取 Kirigami 的单位：longDuration = 200ms、veryLongDuration = 400ms。
      */
     fun asPlasma(): MotionSpec = copy(
         fast = 150,
@@ -200,7 +189,21 @@ data class MotionSpec(
         slow = 420,
         enter = JmEasing.outCubic,
         exit = JmEasing.inCubic,
-        slide = 0.16f,
+    )
+
+    /**
+     * 换成 HyperOS 的节奏。
+     *
+     * 三个特征，都是照着"前后关系"调的：
+     *  1. **时长更长**（350/500ms）：层次变化要看得清，太短就只剩"闪一下"；
+     *  2. **曲线收尾更缓**（`hyperOS` 曲线：起步快、尾巴长），像是被推到位后稳住；
+     */
+    fun asHyperOS(): MotionSpec = copy(
+        fast = 200,
+        base = 350,
+        slow = 500,
+        enter = JmEasing.hyperOS,
+        exit = JmEasing.hyperOSOut,
     )
 }
 
@@ -258,10 +261,13 @@ object Styles {
             accentTint = 0f,
             hairline = 1.dp,
             innerHighlight = true,
-            backdropBlur = Glass.blurRadius,
             backdropSaturate = Glass.SATURATION,
             noise = 0.5f,
-            shadows = listOf(ElevationBase.sm, ElevationBase.card, ElevationBase.flyout),
+            // **半透明表面不投影。** 阴影画在表面之下，而表面是透的 —— 于是阴影从材料里
+            // 透出来、贴着边沿形成一圈脏灰模糊框（用户反馈「玻璃都加了一圈灰框」就是这个）。
+            // 玻璃靠自身的透光与模糊表达层级，不需要投影；实心风格（Miuix / Material）
+            // 仍然照常投影，那是它们表达层级的主要手段。
+            shadows = listOf(0.dp, 0.dp, 0.dp),
         ),
         type = TypeScale(
             display = FontSize.display, title = FontSize.title, subtitle = FontSize.subtitle,
@@ -285,10 +291,10 @@ object Styles {
             craft = SurfaceCraft.Glass,
             fillAlphaScale = 0.58f,
             accentTint = 0.12f,
-            backdropBlur = 64.dp,
             backdropSaturate = Glass.SATURATION,
             noise = 0.2f,
-            shadows = listOf(1.dp, 3.dp, 8.dp),
+            // 同上：半透明表面不投影
+            shadows = listOf(0.dp, 0.dp, 0.dp),
         ),
         // 壁纸透过来的更多，遮罩必须更重，否则文字压在花壁纸上没法读
         wallpaperScrim = 0.58f,
@@ -308,7 +314,6 @@ object Styles {
             accentTint = 0f,
             hairline = 0.dp,
             innerHighlight = false,
-            backdropBlur = 0.dp,
             backdropSaturate = 1f,
             noise = 0f,
             // HyperOS 的卡片几乎不投影，层级靠「卡片比背景亮/暗一档」
@@ -344,7 +349,6 @@ object Styles {
             accentTint = 0f,
             hairline = 0.dp,
             innerHighlight = false,
-            backdropBlur = 0.dp,
             backdropSaturate = 1f,
             noise = 0f,
             // 浮起与浮层按 M3 elevation level 留投影（level1 ≈ 1dp、level3 ≈ 6dp）；
@@ -381,11 +385,10 @@ object Styles {
             accentTint = 0f,
             hairline = 0.dp,
             innerHighlight = false,
-            backdropBlur = 56.dp,
-            // 模糊把颜色平均掉之后会发灰，稍微补一点饱和度
             backdropSaturate = 1.25f,
             noise = 0f,
-            shadows = listOf(0.dp, 2.dp, 8.dp),
+            // 同上：半透明表面不投影
+            shadows = listOf(0.dp, 0.dp, 0.dp),
         ),
         type = TypeScale(
             display = 28.sp, title = 21.sp, subtitle = 16.sp,

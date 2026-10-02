@@ -37,6 +37,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.jmcomic_next.lyqs.ui.jmComicSharedKey
+import com.jmcomic_next.lyqs.ui.LocalBottomBarInset
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.remote.dto.PromoteSection
 import com.jmcomic_next.lyqs.ui.LocalRepository
@@ -146,7 +148,8 @@ private fun HomeContent(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = Spacing.xxl),
+        // 底栏是悬浮的：内容从它后面穿过去，这里留出能把它滚出去的空间
+        contentPadding = PaddingValues(bottom = Spacing.xxl + LocalBottomBarInset.current),
         // 分区之间要拉开：原来 16dp，横向卡片行挨得太近，看不出「这是另一块」
         verticalArrangement = Arrangement.spacedBy(Spacing.xl),
     ) {
@@ -170,6 +173,7 @@ private fun HomeContent(
                             item = comic,
                             coverUrl = repo.coverUrl(comic),
                             onClick = { onOpenComic(comic.id) },
+                            sharedKey = jmComicSharedKey(comic.id),
                         )
                     }
                 }

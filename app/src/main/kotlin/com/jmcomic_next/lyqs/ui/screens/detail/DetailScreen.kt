@@ -61,6 +61,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import coil3.compose.AsyncImage
+import com.jmcomic_next.lyqs.ui.jmSharedElement
+import com.jmcomic_next.lyqs.ui.jmComicSharedKey
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.trackedOrFalse
 import com.jmcomic_next.lyqs.data.prefs.ReadProgressStore
@@ -742,6 +744,9 @@ private fun DetailContent(
                     modifier = Modifier
                         .width(120.dp)
                         .aspectRatio(3f / 4f)
+                        // 触发后的位置：与列表里那张封面共用同一个键，
+                        // 于是封面从"触发前它在列表里的矩形"连续变成"这里的矩形"。
+                        .jmSharedElement(jmComicSharedKey(detail.id))
                         .clip(jmShape(Radius.lg)),
                 )
                 Column(

@@ -41,6 +41,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.jmcomic_next.lyqs.ui.jmComicSharedKey
+import com.jmcomic_next.lyqs.ui.LocalBottomBarInset
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.remote.dto.CategoryNode
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
@@ -431,7 +433,13 @@ private fun CategoryGrid(
         columns = GridCells.Adaptive(minSize = CardSizes.grid),
         state = gridState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(Spacing.lg),
+        contentPadding = PaddingValues(
+            start = Spacing.lg,
+            end = Spacing.lg,
+            top = Spacing.lg,
+            // 悬浮底栏压在上面：底部要把它的高度留出来，否则最后一格滚不出来
+            bottom = Spacing.lg + LocalBottomBarInset.current,
+        ),
         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
@@ -440,6 +448,7 @@ private fun CategoryGrid(
                 item = comic,
                 coverUrl = repo.coverUrl(comic),
                 onClick = { onOpenComic(comic.id) },
+                sharedKey = jmComicSharedKey(comic.id),
                 width = CardSizes.grid,
             )
         }

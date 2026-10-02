@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jmcomic_next.lyqs.ui.LocalUiOptions
@@ -46,14 +47,17 @@ fun AmbientBackdrop(
     val wall = LocalWallpaper.current
     val options = LocalUiOptions.current
 
-    // 底的高斯模糊来自两处，取较大者：风格自己的 backdropBlur（Acrylic 40dp /
-    // Translucent 64dp / FlatBlur 56dp），以及用户在壁纸设置里手动调的模糊。
+    // 底的模糊与饱和度：**只由用户的壁纸设置决定**。
     //
-    // 这一行是 1.3.3 修的一个真问题：风格的 `blur` 令牌以前**没有任何地方读它**，
-    // 声明了 40/64dp 却是死值 —— 所谓「玻璃」其实一点模糊都没有。
-    val effectiveBlur = maxOf(spec.surface.backdropBlur, wall.blur.dp)
-    // 同一个令牌的另一半：Acrylic 在模糊之后还会提饱和度，以前也没实现
-    val saturate = spec.surface.backdropSaturate
+    // 这里曾经是 `maxOf(风格自己的模糊, 用户设置)` —— 那是 1.4.0 的错误改动：
+    // 风格一律声明 40–64dp，于是**用户把模糊调到 0（要清晰）也会被强制糊掉**，
+    // 壁纸变成常驻模糊。风格不该覆盖用户对壁纸的显式选择。
+    // 1.3.3 说「风格的模糊令牌是死值」，那个判断只对了一半：
+    // 真正的问题是「模糊整个底」这件事本身就不等于玻璃（Compose 做不了逐表面背景模糊），
+    // 所以正确的归属是用户的壁纸设置，而不是风格。
+    val frosting = backdropFrosting(userBlur = wall.blur, styleSaturate = spec.surface.backdropSaturate)
+    val effectiveBlur = frosting.blur
+    val saturate = frosting.saturate
 
     // 莫奈取色套用在模糊上（可选）：用动态取色派生的三个色相给「底」上色。
     // 只把强调色换成系统色的话，背景仍是我们自己定的渐变，玻璃糊出来的颜色与壁纸无关；
@@ -196,3 +200,23 @@ fun Modifier.ambientBase(): Modifier {
         }
     }
 }
+
+/**
+ * 底的磨砂程度：**只由用户的壁纸设置决定**。
+ *
+ * 抽成纯函数是为了能测 —— 这一处出过一次真 bug（风格把用户的模糊设置覆盖掉，
+ * 壁纸变成常驻模糊），而它属于「参数正确但语义错」的那类问题，只有断言才拦得住。
+ *
+ * 两条规则：
+ *  1. **用户设了 0 就不模糊**（也不动颜色）。风格无权把壁纸糊掉。
+ *  2. 用户开了模糊时，才应用 Acrylic 的饱和度补偿 —— 模糊会把相邻像素平均掉、
+ *     颜色随之发灰，不提饱和就是脏灰。没做磨砂就不该动壁纸的颜色。
+ */
+internal data class BackdropFrosting(val blur: Dp, val saturate: Float)
+
+internal fun backdropFrosting(userBlur: Int, styleSaturate: Float): BackdropFrosting =
+    if (userBlur <= 0) {
+        BackdropFrosting(blur = 0.dp, saturate = 1f)
+    } else {
+        BackdropFrosting(blur = userBlur.dp, saturate = styleSaturate)
+    }

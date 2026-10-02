@@ -51,6 +51,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.jmcomic_next.lyqs.ui.jmComicSharedKey
+import com.jmcomic_next.lyqs.ui.LocalBottomBarInset
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.prefs.AppPrefs
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
@@ -456,7 +458,8 @@ fun SearchScreen(
                 contentPadding = PaddingValues(
                     start = Spacing.lg,
                     end = Spacing.lg,
-                    bottom = Spacing.xxl,
+                    // 悬浮底栏会盖住列表底部
+                    bottom = Spacing.xxl + LocalBottomBarInset.current,
                 ),
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
@@ -517,7 +520,9 @@ private fun SuggestionPanel(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = Spacing.lg),
+            .padding(horizontal = Spacing.lg)
+            // 同上：让悬浮胶囊有可滚出去的空间
+            .padding(bottom = LocalBottomBarInset.current),
         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
         if (history.isNotEmpty()) {
@@ -563,6 +568,7 @@ private fun SuggestionPanel(
                             item = comic,
                             coverUrl = coverUrl(comic),
                             onClick = { onOpenComic(comic.id) },
+                            sharedKey = jmComicSharedKey(comic.id),
                         )
                     }
                 }

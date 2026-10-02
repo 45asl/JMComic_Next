@@ -5,6 +5,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jmcomic_next.lyqs.ui.UiOptions
+import com.jmcomic_next.lyqs.ui.jmComicSharedKey
+import com.jmcomic_next.lyqs.ui.components.backdropFrosting
 import com.jmcomic_next.lyqs.ui.theme.JmEasing
 import com.jmcomic_next.lyqs.ui.theme.MotionStyle
 import com.jmcomic_next.lyqs.ui.theme.RadiusScale
@@ -66,26 +68,39 @@ class ThemeStyleTest {
         val glass = Styles.of(ThemeStyle.Translucent).surface
         assertTrue("Translucent 的填充必须更透", glass.fillAlphaScale < acrylic.fillAlphaScale)
         assertTrue("Translucent 要铺强调色染", glass.accentTint > acrylic.accentTint)
-        assertTrue("Translucent 的模糊要更强", glass.backdropBlur > acrylic.backdropBlur)
+        // 「谁的模糊更强」这条已经没有意义：风格不再自带模糊（见 backdropFrosting）
     }
 
     @Test
-    fun `glass styles actually ask for a backdrop blur`() {
-        // 这条钉的是一次真 bug：`blur` 令牌以前没有任何地方读它 ——
-        // WindowGlass 声明 40dp、Translucent 64dp，实际一点模糊都没做。
-        // 断言「声明了」不够，要断言它落在会被 AmbientBackdrop 读到的那个字段上
-        // （backdropBlur），而且玻璃/平面化风格的模糊必须大于实心风格。
-        val glassy = listOf(ThemeStyle.WindowGlass, ThemeStyle.Translucent, ThemeStyle.FlatBlur)
-        glassy.forEach { style ->
-            val s = Styles.of(style).surface
-            assertTrue("$style 必须真的要求模糊", s.backdropBlur > 0.dp)
-            // 模糊会把颜色平均掉、发灰，所以 Acrylic 还要提饱和度
-            assertTrue("$style 需要饱和度补偿", s.backdropSaturate > 1f)
+    fun `styles never blur the wallpaper behind the user's back`() {
+        // 这条钉的是一次真 bug（1.4.0）：风格的模糊令牌被 `maxOf(风格, 用户设置)` 应用，
+        // 于是用户把壁纸模糊调到 0（要清晰）也会被强制糊掉 —— 壁纸变成常驻模糊。
+        //
+        // 规则：**模糊与饱和度只由用户的壁纸设置决定**。
+        // 用户设 0 → 既不能模糊，也不能动颜色（没做磨砂就别改壁纸）。
+        val off = backdropFrosting(userBlur = 0, styleSaturate = 1.65f)
+        assertEquals("用户设 0 时不得模糊", 0f, off.blur.value, 0.001f)
+        assertEquals("用户设 0 时不得改壁纸饱和度", 1f, off.saturate, 0.001f)
+
+        // 用户开了模糊 → 用他自己的值，并做 Acrylic 的饱和度补偿
+        val on = backdropFrosting(userBlur = 12, styleSaturate = 1.65f)
+        assertEquals("必须用用户的值", 12f, on.blur.value, 0.001f)
+        assertEquals(1.65f, on.saturate, 0.001f)
+
+        // 风格侧只允许提供「补偿倍数」，不允许提供模糊半径
+        listOf(ThemeStyle.WindowGlass, ThemeStyle.Translucent, ThemeStyle.FlatBlur).forEach { style ->
+            assertTrue(
+                "$style 的饱和度补偿应当 > 1（模糊后发灰需要补）",
+                Styles.of(style).surface.backdropSaturate > 1f,
+            )
         }
         listOf(ThemeStyle.Miuix, ThemeStyle.Material).forEach { style ->
-            val s = Styles.of(style).surface
-            assertEquals("$style 是实心体系，不该模糊底", 0f, s.backdropBlur.value, 0.001f)
-            assertEquals("$style 不该改底的饱和度", 1f, s.backdropSaturate, 0.001f)
+            assertEquals(
+                "$style 是实心体系，不该改壁纸饱和度",
+                1f,
+                Styles.of(style).surface.backdropSaturate,
+                0.001f,
+            )
         }
     }
 
@@ -98,11 +113,8 @@ class ThemeStyleTest {
         assertFalse(flat.innerHighlight)
         assertEquals(0f, flat.noise, 0.001f)
         assertEquals(0f, flat.accentTint, 0.001f)
-        // 但模糊要最重：没有描边帮忙划边界，表面与底分不分得开全靠它
-        assertTrue(
-            "FlatBlur 的模糊应当不弱于 WindowGlass",
-            flat.backdropBlur >= Styles.of(ThemeStyle.WindowGlass).surface.backdropBlur,
-        )
+        // 说明：它原来还带一个 56dp 的「底模糊」，那是在风格里强制糊壁纸，
+        // 已经被移除（见 `styles never blur the wallpaper behind the user's back`）。
     }
 
     @Test
@@ -112,7 +124,7 @@ class ThemeStyleTest {
         listOf(ThemeStyle.Miuix, ThemeStyle.Material).forEach { style ->
             val s = Styles.of(style).surface
             assertEquals("$style 不该画描边", 0f, s.hairline.value, 0.001f)
-            assertEquals("$style 不该用模糊", 0f, s.backdropBlur.value, 0.001f)
+            assertEquals("$style 不该改壁纸饱和度", 1f, s.backdropSaturate, 0.001f)
             assertEquals("$style 不该有颗粒层", 0f, s.noise, 0.001f)
             assertFalse("$style 不该有上缘高光", s.innerHighlight)
         }
@@ -235,8 +247,6 @@ class ThemeStyleTest {
         // 时长更长：Kirigami 的 long/veryLong（200/400ms）对上原来的 120/200/320
         assertTrue("Plasma 的时长应当更长", plasma.base > standard.base)
         assertTrue("Plasma 的慢档应当更长", plasma.slow > standard.slow)
-        // 位移更大 —— 这是「柔和」最直接的来源（长收尾 + 更明显的位移）
-        assertTrue("Plasma 的位移应当更大", plasma.slide > standard.slide)
         // 曲线换成 Qt 的 OutCubic / InCubic
         assertEquals(JmEasing.outCubic, plasma.enter)
         assertEquals(JmEasing.inCubic, plasma.exit)
@@ -288,5 +298,31 @@ class ThemeStyleTest {
                 paletteFor(ThemeStyle.Miuix, dark).monetTints.size,
             )
         }
+    }
+
+    // ---- 1.4.2 的动效组织方式：动画由「触发前位置 → 触发后位置」决定 ----
+
+    @Test
+    fun `shared key is deterministic because a mismatch fails silently`() {
+        // 共享元素两边必须用**同一个键**。键不一致时不会报错 —— 只是没有动画，
+        // 属于最难发现的一类失败。所以把键的生成收成一个函数并在这里钉住。
+        assertEquals(jmComicSharedKey("123"), jmComicSharedKey("123"))
+        assertNotEquals(jmComicSharedKey("123"), jmComicSharedKey("124"))
+        // 前缀固定：改掉它等于把所有共享转场静默关掉
+        assertTrue(jmComicSharedKey("123").startsWith("jm-cover-"))
+    }
+
+    @Test
+    fun `hyperos motion is slower and longer-tailed than standard`() {
+        val standard = Styles.of(ThemeStyle.WindowGlass).motion
+        val hyper = standard.asHyperOS()
+        // 层次变化要看得清，时长必须比标准更长
+        assertTrue("HyperOS 的转场应当更长", hyper.base > standard.base)
+        assertTrue("HyperOS 的收尾应当更长", hyper.slow > standard.slow)
+        // 进入用长尾曲线、退出用更快的曲线 —— 两者不能是同一根
+        assertEquals(JmEasing.hyperOS, hyper.enter)
+        assertEquals(JmEasing.hyperOSOut, hyper.exit)
+        // 弹性仍属于风格，不被动效性格覆盖
+        assertEquals(standard.springy, hyper.springy)
     }
 }

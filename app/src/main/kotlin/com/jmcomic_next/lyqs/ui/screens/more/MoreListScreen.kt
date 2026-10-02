@@ -31,6 +31,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.jmcomic_next.lyqs.ui.jmComicSharedKey
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
 import com.jmcomic_next.lyqs.data.remote.dto.PagedList
@@ -291,6 +292,7 @@ fun MoreListScreen(
                         item = comic,
                         coverUrl = repo.coverUrl(comic),
                         onClick = { onOpenComic(comic.id) },
+                        sharedKey = jmComicSharedKey(comic.id),
                         width = CardSizes.grid,
                     )
                 }

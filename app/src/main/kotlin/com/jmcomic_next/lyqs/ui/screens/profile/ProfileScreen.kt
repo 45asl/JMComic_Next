@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.draw.clip
 import kotlinx.coroutines.launch
+import com.jmcomic_next.lyqs.ui.LocalBottomBarInset
 import com.jmcomic_next.lyqs.BuildConfig
 import com.jmcomic_next.lyqs.data.BlockRules
 import com.jmcomic_next.lyqs.data.wallpaper.WallpaperMode
@@ -121,7 +122,13 @@ fun ProfileScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(Spacing.lg),
+            contentPadding = PaddingValues(
+                start = Spacing.lg,
+                end = Spacing.lg,
+                top = Spacing.lg,
+                // 悬浮底栏压在上面，底部要把它的高度留出来
+                bottom = Spacing.lg + LocalBottomBarInset.current,
+            ),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             item {

@@ -64,6 +64,17 @@ object JmEasing {
 
     /** Qt `QEasingCurve::InOutQuad`：cubic-bezier(0.455, 0.03, 0.515, 0.955)，用于对称的往复动画。 */
     val inOutQuad: Easing = CubicBezierEasing(0.455f, 0.03f, 0.515f, 0.955f)
+
+    /**
+     * HyperOS 的转场曲线（进入用）：**起步快、收尾很长**。
+     *
+     * 长尾巴是"深度"能被看清的关键 —— 后层的缩小与压暗要在最后一段慢慢停住，
+     * 收得太快就只剩"闪一下"，看不出层次。
+     */
+    val hyperOS: Easing = CubicBezierEasing(0.35f, 0f, 0.10f, 1f)
+
+    /** HyperOS 的转场曲线（退出用）：比进入更快收走，让前方的页迅速让位。 */
+    val hyperOSOut: Easing = CubicBezierEasing(0.5f, 0f, 0.30f, 1f)
 }
 
 /**
@@ -225,6 +236,7 @@ fun JmTheme(
     val spec = when (options.motionStyle) {
         MotionStyle.Standard -> styleSpec
         MotionStyle.Plasma -> styleSpec.copy(motion = styleSpec.motion.asPlasma())
+        MotionStyle.HyperOS -> styleSpec.copy(motion = styleSpec.motion.asHyperOS())
     }
 
     // Material You 的动态取色：系统从壁纸推出一整套颜色角色（不只是主色）。

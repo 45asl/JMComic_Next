@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.SubcomposeAsyncImage
+import com.jmcomic_next.lyqs.ui.jmSharedElement
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
 import com.jmcomic_next.lyqs.ui.theme.jmShape
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
@@ -67,6 +68,12 @@ fun ComicCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     width: Dp = CardSizes.row,
+    /**
+     * 共享元素键：给了值，封面就会在导航前后**沿它前后两个位置插值**
+     * （列表里的封面矩形 → 详情页的封面矩形），而不是跟页面一起被淡掉。
+     * 见 [com.jmcomic_next.lyqs.ui.jmSharedElement]。
+     */
+    sharedKey: String? = null,
 ) {
     val c = JmTheme.colors
     Column(
@@ -83,6 +90,7 @@ fun ComicCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(COVER_RATIO)
+                .jmSharedElement(sharedKey)
                 .clip(jmShape(Radius.lg)),
         )
         Column(
