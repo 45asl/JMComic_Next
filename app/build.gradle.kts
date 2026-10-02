@@ -41,8 +41,9 @@ android {
         // 1.3.2       = 修 Miuix 连续圆角：右上/左下两个角被反向扫，被切掉一块
         // 1.3.3       = 修玻璃的灰膜与失效的模糊令牌；新增 FlatBlur；Material 改成 Material You 3
         // 1.4.0       = 五个可选项：悬浮底栏 / 莫奈套用到模糊 / 通透模式 / 预测性返回 / Plasma 动效
-        versionCode = 15
-        versionName = "1.4.0"
+        // 1.4.1       = 阅读页专项：并发预取、官方式两行底栏、背景与设置同步、首屏避让、不再被弹
+        versionCode = 16
+        versionName = "1.4.1"
     }
 
     signingConfigs {

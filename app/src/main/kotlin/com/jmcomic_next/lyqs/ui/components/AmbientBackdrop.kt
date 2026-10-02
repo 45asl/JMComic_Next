@@ -62,66 +62,7 @@ fun AmbientBackdrop(
 
     Box(modifier = modifier.fillMaxSize()) {
         // 1. 渐变网格（或实心风格的纯色底）
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .drawWithCache {
-                    val w = size.width
-                    val h = size.height
-
-                    // 底层线性渐变（CSS: linear-gradient(165deg, ...)）
-                    val base = Brush.linearGradient(
-                        colors = c.backdrop,
-                        start = Offset(0f, 0f),
-                        end = Offset(w * 0.35f, h),
-                    )
-
-                    // 三团径向光晕。强度由风格给：玻璃体系要它提供可采样的层次，
-                    // Material / Miuix 的底是平的（M3 的底色是 surface，HyperOS 是纯灰底），
-                    // 给它们铺光晕会变成「实心卡片浮在一片彩色雾上」。
-                    val glow = spec.backdropGlow
-                    val glowA = Brush.radialGradient(
-                        colors = listOf(
-                            (monet.getOrNull(0) ?: c.accent).copy(alpha = 0.45f * glow),
-                            Color.Transparent,
-                        ),
-                        center = Offset(w * 0.12f, -h * 0.08f),
-                        radius = maxOf(w, h) * 0.75f,
-                    )
-
-                    // 右上：偏紫的补光斑
-                    val glowB = Brush.radialGradient(
-                        colors = listOf(
-                            (monet.getOrNull(1) ?: c.tintWarm).copy(alpha = 0.34f * glow),
-                            Color.Transparent,
-                        ),
-                        center = Offset(w * 0.88f, h * 0.04f),
-                        radius = maxOf(w, h) * 0.68f,
-                    )
-
-                    // 下方的收尾光斑。开了「莫奈套用到模糊」时，三团光斑改用系统取色的
-                    // primary / secondary / tertiary —— 这是让背景跟着壁纸走的唯一入口，
-                    // 否则背景永远是我们自己挑的那套冷暖色
-                    val glowC = Brush.radialGradient(
-                        colors = listOf(
-                            (monet.getOrNull(2) ?: c.tintCool).copy(alpha = 0.30f * glow),
-                            Color.Transparent,
-                        ),
-                        center = Offset(w * 0.62f, h * 1.08f),
-                        radius = maxOf(w, h) * 0.72f,
-                    )
-
-                    onDrawWithContent {
-                        drawRect(brush = base)
-                        if (glow > 0f) {
-                            drawRect(brush = glowA)
-                            drawRect(brush = glowB)
-                            drawRect(brush = glowC)
-                        }
-                        drawContent()
-                    }
-                },
-        )
+        Box(modifier = Modifier.fillMaxSize().ambientBase())
 
         // 2. 壁纸图片
         if (wall.showsImage) {
@@ -183,5 +124,75 @@ fun AmbientBackdrop(
         }
 
         content()
+    }
+}
+
+/**
+ * 环境底的「底」：线性渐变 + 三团径向光斑（可选地换成莫奈色相）。
+ *
+ * **抽出来是为了让阅读页与设置页看到同一个底。** 阅读页此前自己写了一个
+ * `c.backdrop.first()` 的纯色，翻页模式甚至是写死的 `Color.Black` ——
+ * 于是同一个应用里两处的背景与遮罩对不上（用户反馈的「阅读页 UI 与设置不同步」）。
+ * 现在两边共用这一段绘制，换风格/换深浅色/开莫奈时两处一起变。
+ *
+ * 这一层是**不透明**的：阅读页必须不透明（伪长图的接缝不能透出壁纸，见 1.1.5），
+ * 所以这里只用实色的渐变与光斑，不引入壁纸或任何透明度依赖。
+ */
+@Composable
+fun Modifier.ambientBase(): Modifier {
+    val c = JmTheme.colors
+    val spec = JmTheme.spec
+    val options = LocalUiOptions.current
+    val monet = if (options.monetBlur) c.monetTints else emptyList()
+
+    return this.drawWithCache {
+        val w = size.width
+        val h = size.height
+
+        // 底层线性渐变（CSS: linear-gradient(165deg, ...)）
+        val base = Brush.linearGradient(
+            colors = c.backdrop,
+            start = Offset(0f, 0f),
+            end = Offset(w * 0.35f, h),
+        )
+
+        // 三团径向光晕。强度由风格给：玻璃体系要它提供可采样的层次，
+        // Material / Miuix 的底是平的（M3 的底色是 surface，HyperOS 是纯灰底），
+        // 给它们铺光晕会变成「实心卡片浮在一片彩色雾上」。
+        val glow = spec.backdropGlow
+        val glowA = Brush.radialGradient(
+            colors = listOf(
+                (monet.getOrNull(0) ?: c.accent).copy(alpha = 0.45f * glow),
+                Color.Transparent,
+            ),
+            center = Offset(w * 0.12f, -h * 0.08f),
+            radius = maxOf(w, h) * 0.75f,
+        )
+        val glowB = Brush.radialGradient(
+            colors = listOf(
+                (monet.getOrNull(1) ?: c.tintWarm).copy(alpha = 0.34f * glow),
+                Color.Transparent,
+            ),
+            center = Offset(w * 0.88f, h * 0.04f),
+            radius = maxOf(w, h) * 0.68f,
+        )
+        // 开了「莫奈套用到模糊」时三团光斑改用系统取色的 primary / secondary / tertiary
+        val glowC = Brush.radialGradient(
+            colors = listOf(
+                (monet.getOrNull(2) ?: c.tintCool).copy(alpha = 0.30f * glow),
+                Color.Transparent,
+            ),
+            center = Offset(w * 0.62f, h * 1.08f),
+            radius = maxOf(w, h) * 0.72f,
+        )
+
+        onDrawBehind {
+            drawRect(brush = base)
+            if (glow > 0f) {
+                drawRect(brush = glowA)
+                drawRect(brush = glowB)
+                drawRect(brush = glowC)
+            }
+        }
     }
 }

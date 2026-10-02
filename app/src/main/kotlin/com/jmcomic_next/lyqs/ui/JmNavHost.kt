@@ -435,13 +435,16 @@ fun JmNavHost(
                     navArgument("chapterId") { type = NavType.StringType },
                 ),
             ) { backStack ->
+                val comicId = backStack.arguments?.getString("comicId").orEmpty()
                 ReaderScreen(
-                    comicId = backStack.arguments?.getString("comicId").orEmpty(),
+                    comicId = comicId,
                     chapterId = backStack.arguments?.getString("chapterId").orEmpty(),
                     // 形态由上层托管：阅读页里切换会同时更新「我的」页的显示（见 ReaderScreen）
                     mode = readerMode,
                     onModeChange = onReaderModeChange,
                     onBack = { nav.popBackStack() },
+                    // 底部栏的「评论」入口：评论区是详情页那个页面，按作品 id 打开
+                    onOpenComments = { nav.push("comments/$comicId") },
                 )
             }
             }
