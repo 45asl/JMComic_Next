@@ -76,6 +76,7 @@ import com.jmcomic_next.lyqs.ui.screens.favorites.FolderPickerDialog
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
+import com.jmcomic_next.lyqs.ui.plainText
 import com.jmcomic_next.lyqs.ui.screens.tags.TagPickerDialog
 import com.jmcomic_next.lyqs.ui.theme.Spacing
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -577,7 +578,7 @@ fun DetailScreen(
             },
         )
 
-        (state.actionNotice ?: state.favoriteNotice ?: state.likeNotice)?.let { notice ->
+        (state.actionNotice ?: state.favoriteNotice ?: state.likeNotice).plainText()?.let { notice ->
             GlassSurface(
                 modifier = Modifier.fillMaxWidth(),
                 level = GlassLevel.Card,

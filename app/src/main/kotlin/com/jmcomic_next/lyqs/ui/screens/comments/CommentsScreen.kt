@@ -50,6 +50,7 @@ import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
 import com.jmcomic_next.lyqs.ui.components.LoadMoreFooter
+import com.jmcomic_next.lyqs.ui.plainText
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
 import com.jmcomic_next.lyqs.ui.components.MessageState
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
@@ -292,7 +293,7 @@ fun CommentsScreen(
             }
         }
 
-        state.notice?.let { notice ->
+        state.notice.plainText()?.let { notice ->
             Text(
                 text = notice,
                 style = MaterialTheme.typography.labelSmall,
@@ -406,7 +407,7 @@ private fun CommentCard(
                 }
             }
 
-            comment.content?.takeIf { it.isNotBlank() }?.let { body ->
+            comment.content.plainText()?.let { body ->
                 Text(
                     text = body,
                     style = MaterialTheme.typography.bodyLarge,
