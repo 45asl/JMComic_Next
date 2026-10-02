@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -340,7 +341,7 @@ private fun AppearanceCard(
             modifier = Modifier.padding(top = Spacing.xxs),
         )
 
-        // 四张预览卡：**用该风格自己的令牌渲染**，所以预览就是它真实的样子，
+        // 预览卡：**用该风格自己的令牌渲染**，所以预览就是它真实的样子，
         // 不是画一张示意图（图会跟实现走散，这种「示意图撒谎」的问题很难被发现）
         ThemeStyle.entries.chunked(2).forEach { row ->
             Row(
@@ -355,6 +356,11 @@ private fun AppearanceCard(
                         onClick = { onThemeStyleChange(style) },
                         modifier = Modifier.weight(1f),
                     )
+                }
+                // 五套风格是奇数，最后一行只有一张卡；补一个等宽占位，
+                // 否则那张卡会被 weight 拉成整行宽，比上面几张明显大一圈
+                if (row.size < 2) {
+                    Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -393,7 +399,8 @@ private fun AppearanceCard(
             Column(Modifier.weight(1f).padding(end = Spacing.md)) {
                 Text("动态取色", style = MaterialTheme.typography.bodyLarge, color = c.text)
                 Text(
-                    text = "取系统壁纸主色（Android 12+）。只会替换强调色，玻璃层次仍按本站配色。",
+                    text = "取系统壁纸的配色（Android 12+）。Material 风格会整份跟随系统；" +
+                        "另外几套玻璃只取强调色，层次仍按本站配色。",
                     style = MaterialTheme.typography.labelSmall,
                     color = c.textTertiary,
                 )

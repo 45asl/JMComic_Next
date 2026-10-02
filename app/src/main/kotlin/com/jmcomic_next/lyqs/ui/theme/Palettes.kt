@@ -1,17 +1,23 @@
 package com.jmcomic_next.lyqs.ui.theme
 
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
 /**
- * 四套风格各自的配色。
+ * 五套风格各自的配色。
  *
  * [LightPalette] / [DarkPalette]（在 Tokens.kt）是博客那套 Acrylic 玻璃配色，
- * 也就是 WindowGlass 用的那一份；另外三套在这里定义。
+ * 也就是 WindowGlass 用的那一份；另外几套在这里定义。
  *
- * 都基于同一份底色**改写**而不是从零写：四套风格的色相家族保持一致（深色都是冷灰蓝、
- * 强调色都是蓝），差别在**表面怎么叠**—— 实心分层的 Material / HyperOS，
- * 与半透明叠层的 Translucent。这样用户切换风格时看到的是「同一款应用的四种做法」，
- * 而不是四款不同应用。
+ * 前三套（Translucent / FlatBlur / Miuix）都基于同一份底色**改写**而不是从零写：
+ * 色相家族保持一致（深色都是冷灰蓝、强调色都是蓝），差别在**表面怎么叠** ——
+ * 实心分层的 Miuix、半透明叠层的 Translucent、只留模糊的 FlatBlur。
+ * 这样用户切换风格时看到的是「同一款应用的几种做法」，而不是几款不同应用。
+ *
+ * [ThemeStyle.Material] 是**例外**：它不从这里挑一份色板，而是直接用 M3 自己的颜色角色
+ * （见 [toJmPalette]）—— Material You 3 的要点就是配色由规范/系统决定，而不是由应用指定。
  */
 
 /**
@@ -48,6 +54,41 @@ val TranslucentDark = DarkPalette.copy(
     strokeInner = Color(0x2EFFFFFF),
     tintWarm = Color(0x2EF78736),
     tintCool = Color(0x3D367DF7),
+)
+
+/**
+ * FlatBlur —— 平面化 + 高斯模糊。
+ *
+ * 表面是**一层干净的半透明平色**：没有描边、没有内高光、没有橙蓝薄层。
+ * 这正是它与那两套玻璃的分工：WindowGlass / Translucent 靠纹理（发丝描边、颗粒、染色）
+ * 表达「这是玻璃」，FlatBlur 只靠背后的模糊，所以它的填充必须更实一点
+ * （没有描边帮忙划边界，填充太淡卡片就散了），描边相关令牌则全部清零。
+ */
+val FlatBlurLight = LightPalette.copy(
+    surfaceMica = Color(0xCCF7F8FA),
+    surface1 = Color(0xB3FFFFFF),
+    surface2 = Color(0xD9FFFFFF),
+    surface3 = Color(0xF2FFFFFF),
+    stroke = Color(0x00000000),
+    strokeStrong = Color(0x140F172A),
+    strokeInner = Color(0x00000000),
+    tintWarm = Color(0x00000000),
+    tintCool = Color(0x00000000),
+)
+
+val FlatBlurDark = DarkPalette.copy(
+    surfaceMica = Color(0xCC14161C),
+    surface1 = Color(0x991E2128),
+    surface2 = Color(0xCC262A33),
+    surface3 = Color(0xE62E323C),
+    surfaceSunken = Color(0x4D000000),
+    surfaceHover = Color(0x14FFFFFF),
+    surfaceActive = Color(0x21FFFFFF),
+    stroke = Color(0x00000000),
+    strokeStrong = Color(0x1FFFFFFF),
+    strokeInner = Color(0x00000000),
+    tintWarm = Color(0x00000000),
+    tintCool = Color(0x00000000),
 )
 
 /**
@@ -118,74 +159,71 @@ val MiuixDark = DarkPalette.copy(
 )
 
 /**
- * Material 3。
+ * 把 M3 的 [ColorScheme] 映射成 [JmPalette] —— Material 风格**完全**按规范的颜色角色走。
  *
- * 按 M3 的色调角色取实心值：surface 是最底层，surfaceContainerLow/High/Highest
- * 逐级抬升。M3 里**层级靠色调而不是描边或透明度**，所以 stroke 与内高光都是全透明 ——
- * 留着描边就不是 Material 了。
+ * **这是这次把 Material 改成「真 · Material You 3」的关键一步。** 以前 Material 只是
+ * 把博客那套玻璃色板换成几档蓝色，表面沿用 haka_comic 的用法（卡片一律 elevation 0、
+ * 不铺 surfaceTint）。那是那个应用的风格化选择，不是 M3 规范。
+ * 现在改成：M3 有什么角色就用什么角色，应用自己的令牌只是 M3 角色的一层投影 ——
+ * 于是「动态取色」不再只换一个强调色，而是**整份配色**都来自系统壁纸。
+ *
+ * 角色对应关系（按 M3 的用法，不是拍脑袋）：
+ *  - 卡片层级 → `surfaceContainerLow` → `surfaceContainer` → `surfaceContainerHigh`：
+ *    M3 用**色调阶梯**表达高度，不是靠阴影
+ *  - 描边 → `outlineVariant`（分隔线）/ `outline`（强描边）
+ *  - 强调色容器 → `primaryContainer`（M3 的 chip / 选中态容器色）
+ *
+ * 一处实测过的对比度：浅色下 `primary`(#6750A4) 压 `primaryContainer`(#EADDFF) 是 5.0:1、
+ * 深色下 5.4:1，都过 WCAG AA 的小字门槛 —— 所以 chip 沿用「accent 文字 + accentSoft 底」
+ * 这套写法在 Material 下依然成立，不需要为它加特例。
  */
-val MaterialLight = LightPalette.copy(
-    accent = Color(0xFF0B57D0),
-    accentHover = Color(0xFF0A4CBB),
-    accentActive = Color(0xFF0842A0),
-    accentFg = Color.White,
-    accentSoft = Color(0xFFD3E3FD),
-    accentGlow = Color(0x400B57D0),
+fun ColorScheme.toJmPalette(): JmPalette = JmPalette(
+    accent = primary,
+    // M3 的状态变化由 state layer（水波纹）表达，不靠换底色：hover/active 与 primary 同色，
+    // 否则「按下时按钮换个颜色」反而是 Material 里没有的做法
+    accentHover = primary,
+    accentActive = primary,
+    accentFg = onPrimary,
+    accentSoft = primaryContainer,
+    accentGlow = primary.copy(alpha = 0.32f),
 
-    surfaceMica = Color(0xFFF8FAFD),
-    surface1 = Color(0xFFEEF3FA),
-    surface2 = Color(0xFFE6EDF7),
-    surface3 = Color(0xFFDEE8F5),
-    surfaceSunken = Color(0x0F0B57D0),
-    surfaceHover = Color(0x140B57D0),
-    surfaceActive = Color(0x1F0B57D0),
+    surfaceMica = surface,
+    surface1 = surfaceContainerLow,
+    surface2 = surfaceContainer,
+    surface3 = surfaceContainerHigh,
+    surfaceSunken = surfaceContainerLowest,
+    surfaceHover = onSurface.copy(alpha = 0.08f),
+    surfaceActive = onSurface.copy(alpha = 0.12f),
 
-    stroke = Color(0x00000000),
-    strokeStrong = Color(0xFFC4C6CF),
-    strokeInner = Color(0x00000000),
+    stroke = outlineVariant,
+    strokeStrong = outline,
+    strokeInner = Color.Transparent,
 
-    text = Color(0xFF1A1C1E),
-    textSecondary = Color(0xFF44474E),
-    textTertiary = Color(0xFF74777F),
+    text = onSurface,
+    textSecondary = onSurfaceVariant,
+    textTertiary = onSurfaceVariant.copy(alpha = 0.74f),
+    textOnAccent = onPrimary,
 
-    tintWarm = Color(0x00000000),
-    tintCool = Color(0x00000000),
-    backdrop = listOf(Color(0xFFF8FAFD), Color(0xFFF8FAFD), Color(0xFFF8FAFD)),
+    error = error,
+    errorFg = onError,
+
+    // M3 没有「橙→蓝薄层」这种东西；它的染色是 primaryContainer / surfaceTint，不是叠渐变
+    tintWarm = Color.Transparent,
+    tintCool = Color.Transparent,
+
+    // 层级全由 surfaceContainer 家族承担，应用底色就是 surface 本身（三层同色 = 平底）
+    backdrop = listOf(surface, surface, surface),
 )
 
-val MaterialDark = DarkPalette.copy(
-    accent = Color(0xFFA8C7FA),
-    accentHover = Color(0xFFC2D7FB),
-    accentActive = Color(0xFFD3E3FD),
-    accentFg = Color(0xFF062E6F),
-    accentSoft = Color(0xFF0B57D0),
-    accentGlow = Color(0x4DA8C7FA),
+/** 关闭动态取色时的 Material：M3 的**基线**配色（`lightColorScheme()` / `darkColorScheme()`）。 */
+fun baselineM3Palette(dark: Boolean): JmPalette =
+    (if (dark) darkColorScheme() else lightColorScheme()).toJmPalette()
 
-    surfaceMica = Color(0xFF111318),
-    surface1 = Color(0xFF1B1E24),
-    surface2 = Color(0xFF22262D),
-    surface3 = Color(0xFF2A2E36),
-    surfaceSunken = Color(0x59000000),
-    surfaceHover = Color(0x14A8C7FA),
-    surfaceActive = Color(0x1FA8C7FA),
-
-    stroke = Color(0x00000000),
-    strokeStrong = Color(0xFF44474E),
-    strokeInner = Color(0x00000000),
-
-    text = Color(0xFFE3E2E6),
-    textSecondary = Color(0xFFC4C6CF),
-    textTertiary = Color(0xFF8E9099),
-
-    tintWarm = Color(0x00000000),
-    tintCool = Color(0x00000000),
-    backdrop = listOf(Color(0xFF111318), Color(0xFF111318), Color(0xFF111318)),
-)
-
-/** 按风格取配色。 */
+/** 按风格取配色。Material 例外：它的配色由 M3 的颜色角色决定（见 [toJmPalette]）。 */
 fun paletteFor(style: ThemeStyle, dark: Boolean): JmPalette = when (style) {
     ThemeStyle.WindowGlass -> if (dark) DarkPalette else LightPalette
     ThemeStyle.Translucent -> if (dark) TranslucentDark else TranslucentLight
+    ThemeStyle.FlatBlur -> if (dark) FlatBlurDark else FlatBlurLight
     ThemeStyle.Miuix -> if (dark) MiuixDark else MiuixLight
-    ThemeStyle.Material -> if (dark) MaterialDark else MaterialLight
+    ThemeStyle.Material -> baselineM3Palette(dark)
 }

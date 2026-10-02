@@ -173,15 +173,29 @@ fun JmTheme(
     val useDynamic = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val spec = Styles.of(style)
 
-    val palette = run {
-        val base = paletteFor(style, darkTheme)
-        if (!useDynamic) {
-            base
-        } else {
-            val dyn = if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-            base.withDynamicAccent(dyn, darkTheme)
-        }
+    // Material You 的动态取色：系统从壁纸推出一整套颜色角色（不只是主色）。
+    // 这份 scheme 有两个用途：Material 风格直接拿它当配色，另外几套玻璃风格只从里面借强调色。
+    val m3Scheme = if (useDynamic) {
+        if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    } else {
+        if (darkTheme) darkColorScheme() else lightColorScheme()
     }
+
+    val palette = when {
+        // Material 风格整份配色都来自 M3 的角色体系 —— 这才是 Material You：
+        // 应用不再自带色板，而是把 M3 的角色投影成自己的令牌
+        style == ThemeStyle.Material -> m3Scheme.toJmPalette()
+
+        !useDynamic -> paletteFor(style, darkTheme)
+
+        // 玻璃体系只借一个强调色：它们的识别度来自「半透明分层 + 发丝描边 + 环境渐变底」，
+        // 如果整个 surface 家族都被系统色替换，毛玻璃的层次感会散掉
+        else -> paletteFor(style, darkTheme).withDynamicAccent(m3Scheme, darkTheme)
+    }
+
+    // Material 把 M3 的 scheme 原样交给 MaterialTheme（不做有损往返转换）；
+    // 其余风格由自己的调色板投影出一份 ColorScheme 给 M3 组件用
+    val colorScheme = if (style == ThemeStyle.Material) m3Scheme else palette.toColorScheme(darkTheme)
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -199,7 +213,7 @@ fun JmTheme(
         LocalJmSpec provides spec,
     ) {
         MaterialTheme(
-            colorScheme = palette.toColorScheme(darkTheme),
+            colorScheme = colorScheme,
             typography = typographyOf(spec.type),
             content = content,
         )

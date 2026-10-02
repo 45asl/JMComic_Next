@@ -30,11 +30,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.jmcomic_next.lyqs.ui.LocalWallpaper
 import com.jmcomic_next.lyqs.ui.theme.jmShape
 import com.jmcomic_next.lyqs.ui.theme.Elevation
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
@@ -53,7 +55,7 @@ enum class GlassLevel { Card, Raised, Flyout }
 /**
  * 一层表面（卡片 / 浮起 / 浮层）。
  *
- * **它是四套风格的公共落点**：13 个界面文件、几十处调用都走这里，所以「风格怎么画表面」
+ * **它是五套风格的公共落点**：13 个界面文件、几十处调用都走这里，所以「风格怎么画表面」
  * 只需要在这一个函数里分支，页面完全不用知道自己正跑在哪套风格下。
  *
  * 四种工艺（[SurfaceCraft]）：
@@ -82,6 +84,11 @@ fun GlassSurface(
     val surface = JmTheme.spec.surface
     val spec = JmTheme.spec
     val noiseBrush = rememberNoiseBrush()
+
+    // 底有没有真实纹理（用户开了壁纸）。Acrylic 的颗粒只在有东西可散射时才画 ——
+    // 判断放在这里而不是令牌里：同一个风格在「有壁纸 / 没壁纸」下应该表现不同，
+    // 这是材质的性质，不是风格的参数。
+    val backdropHasTexture = LocalWallpaper.current.showsImage
 
     // 按压反馈：HyperOS 的卡片按下会微微缩一下（弹性），其它风格保持 1f 不缩放
     val interaction = remember { MutableInteractionSource() }
@@ -118,6 +125,13 @@ fun GlassSurface(
 
     Box(
         modifier = modifier
+            // 缩放必须放在最外层。放在 `.background(...)` / `.border(...)` **之内**的话，
+            // graphicsLayer 只包住更内层的内容，结果是「卡片不动、卡片里的字在缩」——
+            // Miuix 的 0.97 弹性按压会变成文字自己在抖。
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .shadow(elevation, shape, clip = false)
             .clip(shape)
             .background(fill)
@@ -133,9 +147,9 @@ fun GlassSurface(
                 },
             )
             .then(
-                // 薄层只属于玻璃风格：Material / Miuix 的顶栏是**平的**
+                // 薄层只属于玻璃风格：Material / Miuix / FlatBlur 的表面是平的
                 // （haka_comic 的 AppBarTheme 就是 scrolledUnderElevation 0 + 透明 surfaceTint），
-                // 给它们加一层橙蓝渐变就不是那两套风格了
+                // 给它们加一层橙蓝渐变就不是那几套风格了
                 if (tinted && (surface.craft == SurfaceCraft.Acrylic ||
                         surface.craft == SurfaceCraft.Glass)) {
                     // drawBehind 而不是 drawWithContent：薄层是**材质的一部分**，
@@ -157,9 +171,24 @@ fun GlassSurface(
             )
             .drawBehind {
                 // 颗粒质感：Acrylic 的噪点层。用一张预生成的 64×64 噪点贴图平铺，
-                // 而不是每帧画上千个小圆 —— 后者在滚动列表里会直接掉帧
-                if (surface.noise > 0f) {
-                    drawRect(brush = noiseBrush, alpha = surface.noise)
+                // 而不是每帧画上千个小圆 —— 后者在滚动列表里会直接掉帧。
+                //
+                // **只在底真的有纹理时才画。** 颗粒的物理含义是「毛玻璃把背后的细节散射成
+                // 微小亮点」；底是平滑渐变时它没有可散射的对象，画上去只是脏 ——
+                // 而且 64px 的贴图在 2.75 倍密度下是约 23dp 的周期，眼睛能看出重复。
+                // 所以它跟「用户有没有开壁纸」绑定，而不是无条件铺在每张卡上。
+                if (surface.noise > 0f && backdropHasTexture) {
+                    // **必须用 Overlay（中点灰 = 不变），不能用默认的 SrcOver。**
+                    // 贴图的均值是 127/255，SrcOver 合成等于把整块表面往中灰拉：
+                    // 实测底 0.10 时整层被提亮 12.8 级、底 0.97 时被压暗 15.1 级，
+                    // 而它本该提供的颗粒只有 ±3 级 —— 也就是说这一层 5 倍于颗粒的成分
+                    // 是一层灰膜，玻璃因此发灰、发脏、掉饱和度。
+                    // Overlay 把均值偏移压到 0.00 级（实测），只留下颗粒本身。
+                    drawRect(
+                        brush = noiseBrush,
+                        alpha = surface.noise,
+                        blendMode = BlendMode.Overlay,
+                    )
                 }
                 // 上缘高光：一条很短的竖向渐变，只留 3dp 高度，模拟玻璃的厚度反光
                 if (surface.innerHighlight) {
@@ -173,10 +202,6 @@ fun GlassSurface(
                         size = Size(size.width, h),
                     )
                 }
-            }
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
             }
             .then(
                 if (onClick != null) {
@@ -233,7 +258,12 @@ fun GlassCircle(
  *
  * 生成一次、remember 住：噪点必须是**固定的**（每帧随机就是闪动的雪花点，比没有还难看），
  * 而且要能平铺（贴图尺寸取 2 的幂，接缝不明显）。用确定性伪随机而不是 Random，
- * 这样深浅两套主题、四套风格拿到的颗粒一模一样。
+ * 这样深浅两套主题、五套风格拿到的颗粒一模一样。
+ *
+ * **它的均值是 127/255，所以只能配中性混合模式（Overlay）使用。**
+ * 用默认的 SrcOver 会变成往中灰拉的灰膜：实测整块表面被偏移 +12.8 级（深色底）
+ * 到 −15.1 级（近白底），而它本该提供的颗粒只有 ±3 级 —— 灰膜是颗粒的 5 倍。
+ * 那正是「玻璃发灰、发脏、掉饱和度」的来源（深色卡饱和度从 0.392 掉到 0.266）。
  */
 @Composable
 private fun rememberNoiseBrush(): ShaderBrush = remember {
@@ -247,7 +277,10 @@ private fun rememberNoiseBrush(): ShaderBrush = remember {
         seed = seed xor (seed shl 5)
         val v = (seed and 0xFFu).toInt()
         val lum = 128 + (v - 128) / 3
-        pixels[i] = (0x40 shl 24) or (lum shl 16) or (lum shl 8) or lum
+        // alpha 0x80：Overlay 下颗粒幅度正比于这一层的不透明度，原来配 SrcOver 用的
+        // 0x40 太淡（同 alpha 下实测只有 ±1.9 级）。改成中性混合后可以放心加大，
+        // 因为均值不再偏移 —— 幅度不再等于「灰膜」。
+        pixels[i] = (0x80 shl 24) or (lum shl 16) or (lum shl 8) or lum
     }
     val bitmap = Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
     ShaderBrush(ImageShader(bitmap.asImageBitmap(), TileMode.Repeated, TileMode.Repeated))

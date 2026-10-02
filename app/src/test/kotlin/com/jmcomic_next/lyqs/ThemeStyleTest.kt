@@ -1,9 +1,14 @@
 package com.jmcomic_next.lyqs
 
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.jmcomic_next.lyqs.ui.theme.RadiusScale
 import com.jmcomic_next.lyqs.ui.theme.Styles
 import com.jmcomic_next.lyqs.ui.theme.SurfaceCraft
 import com.jmcomic_next.lyqs.ui.theme.ThemeStyle
+import com.jmcomic_next.lyqs.ui.theme.baselineM3Palette
 import com.jmcomic_next.lyqs.ui.theme.paletteFor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,12 +17,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 四套风格的令牌。
+ * 五套风格的令牌。
  *
- * 这些断言看起来「只是查表」，但它们钉住的是一件事：**四套风格必须真的不一样**。
- * 风格系统最容易出的问题不是崩溃，而是「做了四个选项，看起来却差不多」——
+ * 这些断言看起来「只是查表」，但它们钉住的是一件事：**五套风格必须真的不一样**。
+ * 风格系统最容易出的问题不是崩溃，而是「做了五个选项，看起来却差不多」——
  * 圆角抄成同一组、表面工艺都写成 Acrylic、字重没换，用户选了半天没感觉。
- * 所以这里逐项要求彼此不同，而不是只测「有四个枚举值」。
+ * 所以这里逐项要求彼此不同，而不是只测「有五个枚举值」。
+ *
+ * 1.3.3 又补了两类断言：**模糊/饱和度必须真的接线**（以前 `blur` 令牌是死值，
+ * 声明了 40dp 却没有任何地方读它），以及 **Material 必须真的按 M3 的角色走**
+ * （以前只是把玻璃色板换成几档蓝色）。
  */
 class ThemeStyleTest {
 
@@ -33,6 +42,7 @@ class ThemeStyleTest {
         assertEquals(ThemeStyle.Miuix, ThemeStyle.fromName("Miuix"))
         assertEquals(ThemeStyle.Default, ThemeStyle.fromName(null))
         assertEquals(ThemeStyle.Default, ThemeStyle.fromName("Materail"))
+        assertEquals(ThemeStyle.FlatBlur, ThemeStyle.fromName("FlatBlur"))
     }
 
     @Test
@@ -42,6 +52,8 @@ class ThemeStyleTest {
         assertEquals(SurfaceCraft.Card, Styles.of(ThemeStyle.Miuix).surface.craft)
         assertEquals(SurfaceCraft.Tonal, Styles.of(ThemeStyle.Material).surface.craft)
         assertEquals(SurfaceCraft.Glass, Styles.of(ThemeStyle.Translucent).surface.craft)
+        assertEquals(SurfaceCraft.Acrylic, Styles.of(ThemeStyle.WindowGlass).surface.craft)
+        assertEquals(SurfaceCraft.Blur, Styles.of(ThemeStyle.FlatBlur).surface.craft)
     }
 
     @Test
@@ -51,7 +63,43 @@ class ThemeStyleTest {
         val glass = Styles.of(ThemeStyle.Translucent).surface
         assertTrue("Translucent 的填充必须更透", glass.fillAlphaScale < acrylic.fillAlphaScale)
         assertTrue("Translucent 要铺强调色染", glass.accentTint > acrylic.accentTint)
-        assertTrue("Translucent 的模糊要更强", glass.blur > acrylic.blur)
+        assertTrue("Translucent 的模糊要更强", glass.backdropBlur > acrylic.backdropBlur)
+    }
+
+    @Test
+    fun `glass styles actually ask for a backdrop blur`() {
+        // 这条钉的是一次真 bug：`blur` 令牌以前没有任何地方读它 ——
+        // WindowGlass 声明 40dp、Translucent 64dp，实际一点模糊都没做。
+        // 断言「声明了」不够，要断言它落在会被 AmbientBackdrop 读到的那个字段上
+        // （backdropBlur），而且玻璃/平面化风格的模糊必须大于实心风格。
+        val glassy = listOf(ThemeStyle.WindowGlass, ThemeStyle.Translucent, ThemeStyle.FlatBlur)
+        glassy.forEach { style ->
+            val s = Styles.of(style).surface
+            assertTrue("$style 必须真的要求模糊", s.backdropBlur > 0.dp)
+            // 模糊会把颜色平均掉、发灰，所以 Acrylic 还要提饱和度
+            assertTrue("$style 需要饱和度补偿", s.backdropSaturate > 1f)
+        }
+        listOf(ThemeStyle.Miuix, ThemeStyle.Material).forEach { style ->
+            val s = Styles.of(style).surface
+            assertEquals("$style 是实心体系，不该模糊底", 0f, s.backdropBlur.value, 0.001f)
+            assertEquals("$style 不该改底的饱和度", 1f, s.backdropSaturate, 0.001f)
+        }
+    }
+
+    @Test
+    fun `flat blur is the one with no texture at all`() {
+        // FlatBlur 的定义就是「只有模糊」：描边、内高光、颗粒、强调色染一个都不留。
+        // 少任何一条它就跟 WindowGlass 分不开了
+        val flat = Styles.of(ThemeStyle.FlatBlur).surface
+        assertEquals(0f, flat.hairline.value, 0.001f)
+        assertFalse(flat.innerHighlight)
+        assertEquals(0f, flat.noise, 0.001f)
+        assertEquals(0f, flat.accentTint, 0.001f)
+        // 但模糊要最重：没有描边帮忙划边界，表面与底分不分得开全靠它
+        assertTrue(
+            "FlatBlur 的模糊应当不弱于 WindowGlass",
+            flat.backdropBlur >= Styles.of(ThemeStyle.WindowGlass).surface.backdropBlur,
+        )
     }
 
     @Test
@@ -61,7 +109,7 @@ class ThemeStyleTest {
         listOf(ThemeStyle.Miuix, ThemeStyle.Material).forEach { style ->
             val s = Styles.of(style).surface
             assertEquals("$style 不该画描边", 0f, s.hairline.value, 0.001f)
-            assertEquals("$style 不该用模糊", 0f, s.blur.value, 0.001f)
+            assertEquals("$style 不该用模糊", 0f, s.backdropBlur.value, 0.001f)
             assertEquals("$style 不该有颗粒层", 0f, s.noise, 0.001f)
             assertFalse("$style 不该有上缘高光", s.innerHighlight)
         }
@@ -113,13 +161,40 @@ class ThemeStyleTest {
     }
 
     @Test
-    fun `material keeps its cards flat`() {
-        // haka_comic 的卡片一律 elevation: 0，靠色调分层；这里同样不能有投影，
-        // 否则 Material 风格会开始像「带阴影的玻璃」，那是最四不像的一种
-        val m = Styles.of(ThemeStyle.Material).surface
-        assertEquals(0f, m.shadowOf(0).value, 0.001f)
-        assertEquals(0f, m.shadowOf(1).value, 0.001f)
-        assertEquals(12f, Styles.of(ThemeStyle.Material).radius.lg.value, 0.001f)
+    fun `material follows the M3 shape and elevation levels`() {
+        // 从「照抄 haka_comic」改成「按 M3 规范」之后：
+        //  - 卡片是 M3 的 medium 形状（12dp）
+        //  - filled card 不投影，但浮层按 M3 的 elevation level 要投（level3 ≈ 6dp）
+        val spec = Styles.of(ThemeStyle.Material)
+        assertEquals(12f, spec.radius.lg.value, 0.001f)
+        assertEquals(28f, spec.radius.xl.value, 0.001f)
+        assertEquals("filled card 不投影", 0f, spec.surface.shadowOf(0).value, 0.001f)
+        assertTrue("浮层要按 M3 的高度投影", spec.surface.shadowOf(2).value > 0f)
+    }
+
+    @Test
+    fun `material takes its colors from the M3 roles`() {
+        // 这条是「真 · Material You 3」的根据：Material 的令牌必须是 M3 颜色角色本身，
+        // 不是应用自己挑的一批颜色。以前它只是把玻璃色板换成几档蓝色，那就不是 M3 了。
+        listOf(true, false).forEach { dark ->
+            val scheme = if (dark) darkColorScheme() else lightColorScheme()
+            val p = baselineM3Palette(dark)
+            assertEquals("强调色必须是 primary", scheme.primary, p.accent)
+            assertEquals("强调色上的文字必须是 onPrimary", scheme.onPrimary, p.accentFg)
+            assertEquals("卡片容器色必须是 surfaceContainerLow", scheme.surfaceContainerLow, p.surface1)
+            assertEquals("中层必须是 surfaceContainer", scheme.surfaceContainer, p.surface2)
+            assertEquals("高层必须是 surfaceContainerHigh", scheme.surfaceContainerHigh, p.surface3)
+            assertEquals("正文色必须是 onSurface", scheme.onSurface, p.text)
+            assertEquals("次级文字必须是 onSurfaceVariant", scheme.onSurfaceVariant, p.textSecondary)
+            assertEquals("描边必须是 outlineVariant", scheme.outlineVariant, p.stroke)
+            // M3 的层级靠色调阶梯而不是透明度：三层必须是三个不同的实色
+            assertEquals("M3 的表面必须不透明", 1f, p.surface3.alpha, 0.001f)
+            assertNotEquals("三层容器色必须彼此不同", p.surface1, p.surface2)
+            assertNotEquals("三层容器色必须彼此不同", p.surface2, p.surface3)
+            // M3 没有橙蓝薄层
+            assertEquals(Color.Transparent, p.tintWarm)
+            assertEquals(Color.Transparent, p.tintCool)
+        }
     }
 
     @Test
@@ -127,7 +202,10 @@ class ThemeStyleTest {
         // HyperOS 的圆角是「平滑圆角」（连续曲率），不是四分之一圆弧；
         // 另外三套保持圆弧 —— 给 Windows / Material 套上平滑圆角反而不像了
         assertEquals(SurfaceCraft.Card, Styles.of(ThemeStyle.Miuix).surface.craft)
-        listOf(ThemeStyle.WindowGlass, ThemeStyle.Translucent, ThemeStyle.Material).forEach {
+        listOf(
+            ThemeStyle.WindowGlass, ThemeStyle.Translucent,
+            ThemeStyle.FlatBlur, ThemeStyle.Material,
+        ).forEach {
             assertNotEquals(SurfaceCraft.Card, Styles.of(it).surface.craft)
         }
     }

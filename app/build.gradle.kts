@@ -39,8 +39,9 @@ android {
         // 1.3.0       = 四套界面风格（WindowGlass / Translucent / Miuix / Material）+ 可选壁纸
         // 1.3.1       = Bing 壁纸按屏幕方向取竖屏裁切（改尺寸段，不是拉伸）
         // 1.3.2       = 修 Miuix 连续圆角：右上/左下两个角被反向扫，被切掉一块
-        versionCode = 13
-        versionName = "1.3.2"
+        // 1.3.3       = 修玻璃的灰膜与失效的模糊令牌；新增 FlatBlur；Material 改成 Material You 3
+        versionCode = 14
+        versionName = "1.3.3"
     }
 
     signingConfigs {

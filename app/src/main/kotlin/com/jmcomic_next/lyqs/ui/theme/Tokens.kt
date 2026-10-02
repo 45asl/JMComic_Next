@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.sp
  *
  * **这些值随风格变化**（[LocalJmSpec]），所以读法是 `@Composable` 的：
  * Windows 11 的窗口是 8dp 圆角、Material 3 的卡片是 12dp、HyperOS 是 20dp ——
- * 圆角尺度是「这套界面像谁」最直接的信号，写死就等于把四套风格抹平。
+ * 圆角尺度是「这套界面像谁」最直接的信号，写死就等于把五套风格抹平。
  *
  * 例外是 [pill]：胶囊形跟风格无关（哪个体系的浮动小标签都是全圆角）。
  */

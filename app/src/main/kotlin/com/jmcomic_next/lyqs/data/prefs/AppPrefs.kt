@@ -45,7 +45,7 @@ class AppPrefs(context: Context) {
      * 界面风格。
      *
      * 默认 [ThemeStyle.Default]（WindowGlass）—— 那是本应用原来的样子。
-     * 四套风格见 [ThemeStyle]：它们换的不只是配色，还有圆角、表面工艺、字重与动效。
+     * 五套风格见 [ThemeStyle]：它们换的不只是配色，还有圆角、表面工艺、字重与动效。
      */
     var themeStyle: ThemeStyle
         get() = ThemeStyle.fromName(sp.getString(KEY_STYLE, null))

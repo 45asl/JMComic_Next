@@ -8,18 +8,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * 四套可选风格。
+ * 五套可选风格。
  *
- * 这不是「四套配色」，而是四套**表面工艺**：圆角尺度、表面材质、描边、
- * 投影、字体层级、动效手感都不一样。只换颜色的话，四套风格在截图里会长得一样 ——
- * 那和做四个主题包没区别，用户也说不清自己为什么选了它。
+ * 这不是「五套配色」，而是五套**表面工艺**：圆角尺度、表面材质、描边、
+ * 投影、字体层级、动效手感都不一样。只换颜色的话，五套风格在截图里会长得一样 ——
+ * 那和做五个主题包没区别，用户也说不清自己为什么选了它。
  *
  * 每个风格都对着一份可查的参考：
  *
  *  - [WindowGlass]：Windows 11 窗口玻璃（8px 窗口圆角、发丝描边、Acrylic 颗粒）
  *  - [Translucent]：Windhawk 的 Translucent 系列（重度透明 + 强调色薄染）
+ *  - [FlatBlur]：平面化 + 高斯模糊（没有描边/颗粒/高光，只留模糊）
  *  - [Miuix]：Xiaomi HyperOS / MIUI 的大圆角实心卡片
- *  - [Material]：经典 Material 3（色调分层，无玻璃无描边）
+ *  - [Material]：Google Material You 3（完全按 M3 的颜色角色，可跟随系统动态取色）
  *
  * 默认是 [WindowGlass]：那是本应用原来的样子（博客的 Fluent × MIUI 玻璃），
  * 升级不该把老用户的界面换掉。
@@ -33,13 +34,17 @@ enum class ThemeStyle(val label: String, val tagline: String) {
         label = "Translucent",
         tagline = "Windhawk 透明系：表面更透、强调色薄染，壁纸透得最明显",
     ),
+    FlatBlur(
+        label = "FlatBlur",
+        tagline = "平面化 + 高斯模糊：无描边、无颗粒、无高光，只留一层模糊的底",
+    ),
     Miuix(
         label = "Miuix",
         tagline = "HyperOS：大圆角实心卡片、无描边、弹性按压",
     ),
     Material(
         label = "Material",
-        tagline = "经典 Material 3：色调分层表面，没有玻璃也没有描边",
+        tagline = "Material You 3：按 M3 颜色角色分层，开动态取色就跟系统壁纸走",
     ),
     ;
 
@@ -64,15 +69,16 @@ data class RadiusScale(
 /**
  * 表面工艺 —— 决定一块「卡片」到底怎么画。
  *
- * 四种取值不是渐变关系，而是四种不同的做法，[com.jmcomic_next.lyqs.ui.components.GlassSurface]
- * 按它分支：
+ * 五种取值不是渐变关系，而是五种不同的做法，[com.jmcomic_next.lyqs.ui.components.GlassSurface]
+ * 与 [com.jmcomic_next.lyqs.ui.components.AmbientBackdrop] 按它分支：
  *
- *  - [Acrylic]：半透明填充 + 模糊 + 发丝描边 + 上缘高光（WindowGlass）
+ *  - [Acrylic]：半透明填充 + 背景模糊 + 发丝描边 + 上缘高光 + 颗粒（WindowGlass）
  *  - [Glass]：更低不透明度 + 强调色薄染 + 亮边（Translucent）
+ *  - [Blur]：干净半透明填充 + 更重的背景模糊，**没有**描边/高光/颗粒/染色（FlatBlur）
  *  - [Card]：近实心、大圆角、**没有描边**（Miuix）
- *  - [Tonal]：实心色调分层，靠高度而不是描边区分层级（Material）
+ *  - [Tonal]：实心色调分层，靠 M3 的 surfaceContainer 角色区分层级（Material）
  */
-enum class SurfaceCraft { Acrylic, Glass, Card, Tonal }
+enum class SurfaceCraft { Acrylic, Glass, Blur, Card, Tonal }
 
 /**
  * 表面参数。
@@ -85,13 +91,34 @@ data class SurfaceSpec(
     val fillAlphaScale: Float,
     /** 强调色薄染强度 0..1。Windhawk 的 Translucent 系会把强调色铺在窗口上，这里同理。 */
     val accentTint: Float,
-    /** 发丝描边宽度，0dp = 不画描边（Miuix / Material 都不画）。 */
+    /** 发丝描边宽度，0dp = 不画描边（Miuix / Material / FlatBlur 都不画）。 */
     val hairline: Dp,
-    /** 上缘高光：玻璃厚度的反光，实心卡片不需要。 */
+    /** 上缘高光：玻璃厚度的反光，实心与平面化风格不需要。 */
     val innerHighlight: Boolean,
-    /** 背景模糊半径，0dp = 不用 RenderEffect（API 31+ 才真实生效）。 */
-    val blur: Dp,
-    /** 颗粒质感强度 0..1，Acrylic 的噪点层。 */
+    /**
+     * **底**（环境渐变 / 壁纸）的高斯模糊半径，0dp = 不模糊。
+     *
+     * 这是真实生效的值，由 [com.jmcomic_next.lyqs.ui.components.AmbientBackdrop] 应用。
+     * 之所以模糊「底」而不是卡片自己：Compose 读不到卡片背后已经画好的内容，
+     * 做不了严格意义的 backdrop-filter，只能把整层底糊掉、再让半透明表面叠上去。
+     * 底本身若是平滑渐变，模糊看不出差别 —— 那是正常的，没有细节可糊；
+     * 有壁纸时这个值才真正决定「毛玻璃」的观感。
+     */
+    val backdropBlur: Dp,
+    /**
+     * 底的饱和度倍数（Acrylic 的 `saturate()`），1f = 不改。
+     *
+     * 真实 Acrylic 在模糊之后还会提饱和度：模糊会把相邻像素平均掉，颜色随之发灰，
+     * 不提饱和度的话玻璃看起来是脏的灰而不是通透的彩色。
+     */
+    val backdropSaturate: Float,
+    /**
+     * 颗粒质感强度 0..1，Acrylic 的噪点层。
+     *
+     * 只在底**真的有纹理**（用户开了壁纸）时才画：颗粒的物理含义是「毛玻璃把背后的细节
+     * 散射成微小亮点」，背后是平滑渐变时它没有对应物，画上去只是脏。
+     * 见 [com.jmcomic_next.lyqs.ui.components.GlassSurface]。
+     */
     val noise: Float,
     /** [GlassLevel] 三档对应的投影：Card / Raised / Flyout。 */
     val shadows: List<Dp>,
@@ -125,7 +152,7 @@ data class MotionSpec(
 
 /**
  * 一套完整风格。配色不在里面 —— 配色由 [JmTheme] 按「风格 + 深浅色 + 动态取色」算出来，
- * 因为深浅色是正交的一维（四套风格 × 深浅两色 = 八个组合），塞进这里会变成八个实例。
+ * 因为深浅色是正交的一维（五套风格 × 深浅两色 = 十个组合），塞进这里会变成十个实例。
  */
 data class JmSpec(
     val style: ThemeStyle,
@@ -140,6 +167,15 @@ data class JmSpec(
      * Material/Miuix 的表面本身是实心的，只需要很轻的遮罩。
      */
     val wallpaperScrim: Float,
+    /**
+     * 环境底上那三团径向光晕的强度 0..1，0 = 纯平色底。
+     *
+     * 光晕是博客那套 Acrylic 的做法：渐变底 + 三团光斑，给玻璃提供可采样的层次。
+     * **实心体系不该有它，而且有了就不像自己**：Material You 3 的底色是平的 `surface`
+     * （层级全靠 surfaceContainer 的色调阶梯），HyperOS 的列表页也是纯灰底。
+     * 给它们铺一层 45% 强调色的光晕，就变成「实心卡片浮在一片彩色雾上」。
+     */
+    val backdropGlow: Float,
 )
 
 /** 当前生效的风格参数。拿不到直接抛异常 —— 忘包 JmTheme 的问题不该被静默吞掉。 */
@@ -148,7 +184,7 @@ val LocalJmSpec = staticCompositionLocalOf<JmSpec> {
 }
 
 /**
- * 四套风格的参数表。
+ * 五套风格的参数表。
  *
  * 数值来源分两类，注释里逐条注明：
  *  - **有出处**：Windows 11 的窗口圆角是 8px、控件 4px（Fluent 设计规范）；Material 3 的
@@ -168,7 +204,8 @@ object Styles {
             accentTint = 0f,
             hairline = 1.dp,
             innerHighlight = true,
-            blur = Glass.blurRadius,
+            backdropBlur = Glass.blurRadius,
+            backdropSaturate = Glass.SATURATION,
             noise = 0.5f,
             shadows = listOf(ElevationBase.sm, ElevationBase.card, ElevationBase.flyout),
         ),
@@ -180,6 +217,7 @@ object Styles {
         ),
         motion = MotionSpec(Motion.FAST, Motion.BASE, Motion.SLOW, springy = false),
         wallpaperScrim = 0.34f,
+        backdropGlow = 1f,
     )
 
     /**
@@ -193,12 +231,14 @@ object Styles {
             craft = SurfaceCraft.Glass,
             fillAlphaScale = 0.58f,
             accentTint = 0.12f,
-            blur = 64.dp,
+            backdropBlur = 64.dp,
+            backdropSaturate = Glass.SATURATION,
             noise = 0.2f,
             shadows = listOf(1.dp, 3.dp, 8.dp),
         ),
         // 壁纸透过来的更多，遮罩必须更重，否则文字压在花壁纸上没法读
         wallpaperScrim = 0.58f,
+        backdropGlow = 1f,
     )
 
     /** HyperOS：大圆角、实心卡片、不画描边，靠色差分层；弹性按压是它的标志手感。 */
@@ -214,7 +254,8 @@ object Styles {
             accentTint = 0f,
             hairline = 0.dp,
             innerHighlight = false,
-            blur = 0.dp,
+            backdropBlur = 0.dp,
+            backdropSaturate = 1f,
             noise = 0f,
             // HyperOS 的卡片几乎不投影，层级靠「卡片比背景亮/暗一档」
             shadows = listOf(0.dp, 1.dp, 3.dp),
@@ -228,12 +269,20 @@ object Styles {
         ),
         motion = MotionSpec(150, 240, 360, springy = true),
         wallpaperScrim = 0.46f,
+        backdropGlow = 0f,
     )
 
-    /** Material 3：圆角用规范的 4/8/12/16/28；表面实心、靠 tonal elevation 分层。 */
+    /**
+     * Material You 3：颜色**完全**交给 M3 的角色体系（见 [com.jmcomic_next.lyqs.ui.theme.toJmPalette]），
+     * 这里只定几何与排版。
+     *
+     * 与 1.3.2 之前的区别：那时抄的是 haka_comic 的 M3 用法 —— 卡片一律 elevation 0、
+     * 不投影、不铺 surfaceTint。那是那个应用的风格化选择，不是 M3 规范本身。
+     * 现在按规范来：形状用 M3 的 4/8/12/16/28，卡片是 medium(12dp)，
+     * 层级靠 surfaceContainerLow/Container/High 的色调阶梯，浮层才带投影。
+     */
     val material = JmSpec(
         style = ThemeStyle.Material,
-        // 卡片 12dp：M3 自己的默认卡片圆角，也是 haka_comic 里最常用的那一档（它用 8~12）
         radius = RadiusScale(xs = 4.dp, sm = 8.dp, md = 12.dp, lg = 12.dp, xl = 28.dp),
         surface = SurfaceSpec(
             craft = SurfaceCraft.Tonal,
@@ -241,11 +290,12 @@ object Styles {
             accentTint = 0f,
             hairline = 0.dp,
             innerHighlight = false,
-            blur = 0.dp,
+            backdropBlur = 0.dp,
+            backdropSaturate = 1f,
             noise = 0f,
-            // 卡片与浮起都**不投影**（haka_comic 里 7 处 Card 全部 elevation: 0），
-            // 高度靠 surfaceContainer 家族的色调差表达；只有浮层留一点投影
-            shadows = listOf(0.dp, 0.dp, 3.dp),
+            // 浮起与浮层按 M3 elevation level 留投影（level1 ≈ 1dp、level3 ≈ 6dp）；
+            // 卡片本身在 M3 里靠 surfaceContainer 的色调表达，不靠投影
+            shadows = listOf(0.dp, 1.dp, 6.dp),
         ),
         type = TypeScale(
             display = 28.sp, title = 22.sp, subtitle = 16.sp,
@@ -255,11 +305,49 @@ object Styles {
         ),
         motion = MotionSpec(100, 200, 300, springy = false),
         wallpaperScrim = 0.52f,
+        backdropGlow = 0f,
+    )
+
+    /**
+     * 平面化 + 高斯模糊。
+     *
+     * 与另外两套玻璃的区别是**只有模糊**：没有发丝描边、没有上缘高光、没有颗粒、
+     * 没有强调色薄染 —— 表面就是一层干净的半透明平色，靠背后的模糊把底「推开」。
+     * 玻璃那两套都有纹理（描边 / 颗粒 / 染色），这一套刻意一个都不留。
+     *
+     * 正因如此它的模糊要更重：没有描边和高光帮忙划边界，表面与底分不分得开全靠模糊程度。
+     */
+    val flatBlur = JmSpec(
+        style = ThemeStyle.FlatBlur,
+        // 圆角偏大：平面化风格没有描边，形状是它唯一的语言
+        radius = RadiusScale(xs = 8.dp, sm = 12.dp, md = 16.dp, lg = 20.dp, xl = 28.dp),
+        surface = SurfaceSpec(
+            craft = SurfaceCraft.Blur,
+            fillAlphaScale = 1f,
+            accentTint = 0f,
+            hairline = 0.dp,
+            innerHighlight = false,
+            backdropBlur = 56.dp,
+            // 模糊把颜色平均掉之后会发灰，稍微补一点饱和度
+            backdropSaturate = 1.25f,
+            noise = 0f,
+            shadows = listOf(0.dp, 2.dp, 8.dp),
+        ),
+        type = TypeScale(
+            display = 28.sp, title = 21.sp, subtitle = 16.sp,
+            body = 15.sp, label = 13.sp, caption = 11.5.sp,
+            titleWeight = FontWeight.SemiBold, subtitleWeight = FontWeight.Medium,
+            bodyWeight = FontWeight.Normal, lineHeightFactor = 1.60f,
+        ),
+        motion = MotionSpec(120, 220, 320, springy = false),
+        wallpaperScrim = 0.42f,
+        backdropGlow = 1f,
     )
 
     fun of(style: ThemeStyle): JmSpec = when (style) {
         ThemeStyle.WindowGlass -> windowGlass
         ThemeStyle.Translucent -> translucent
+        ThemeStyle.FlatBlur -> flatBlur
         ThemeStyle.Miuix -> miuix
         ThemeStyle.Material -> material
     }
