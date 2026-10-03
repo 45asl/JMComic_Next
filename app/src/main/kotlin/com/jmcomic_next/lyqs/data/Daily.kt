@@ -42,4 +42,15 @@ object Daily {
         return m.contains("已簽到") || m.contains("已签到") ||
             m.contains("已經簽到") || m.contains("已经签到")
     }
+
+    /**
+     * 历史日历默认选中哪一年。
+     *
+     * **不能用 `years.first()`**：实测服务端给的是 `["2024","2025","2026"]`（**从旧到新**），
+     * 取第一个会停在三年前。优先选今年，没有今年就取最大的一年。
+     */
+    fun defaultHistoryYear(years: List<String>, currentYear: Int): String? =
+        years.firstOrNull { it.trim() == currentYear.toString() }
+            ?: years.mapNotNull { it.trim().toIntOrNull() }.maxOrNull()?.toString()
+            ?: years.firstOrNull()
 }

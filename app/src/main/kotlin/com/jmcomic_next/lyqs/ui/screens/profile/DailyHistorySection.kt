@@ -67,8 +67,12 @@ fun DailyHistorySection(
         runCatching { repo.dailyHistoryOptions(uid) }
             .onSuccess { options: DailyHistoryOptions ->
                 years = options.list.mapNotNull { it.titleText }
-                // 默认选第一个（服务端按从新到旧给，第一个就是最新那年）
-                year = years.firstOrNull()
+                // 实测服务端给的是从旧到新（2024,2025,2026），所以不能取第一个 ——
+                // 优先今年，否则取最大的一年（见 Daily.defaultHistoryYear）
+                year = com.jmcomic_next.lyqs.data.Daily.defaultHistoryYear(
+                    years,
+                    java.util.Calendar.getInstance().get(java.util.Calendar.YEAR),
+                )
             }
             .onFailure { error = it.message?.takeIf { m -> m.isNotBlank() } ?: "网络问题" }
         loading = false
@@ -142,18 +146,30 @@ fun DailyHistorySection(
 
         // 该年的记录：一条一张图，点一下在下面看大图
         LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            items(entries, key = { it.imgText ?: it.hashCode().toString() }) { entry ->
-                val url = entry.imgText ?: return@items
+            items(entries, key = { it.idText ?: it.hashCode().toString() }) { entry ->
+                // 注意：实测 img 可能是 null（服务端没给图）。**没有图也要显示这一格**，
+                // 因为月份角标在源码里是在"有没有图"的判断之外 —— 否则整行会是空的。
+                val url = entry.imgText
                 Box {
-                    AsyncImage(
-                        model = url,
-                        contentDescription = entry.dateText ?: "签到记录",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(RoundedCornerShape(Radius.sm))
-                            .clickable { preview = url },
-                    )
+                    if (url != null) {
+                        AsyncImage(
+                            model = url,
+                            contentDescription = entry.dateText ?: "签到记录",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(Radius.sm))
+                                .clickable { preview = url },
+                        )
+                    } else {
+                        // 没图时给一块底色占位：格子还在、月份角标还能显示
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(Radius.sm))
+                                .background(c.surface2),
+                        )
+                    }
                     // 月份角标：源码在缩略图左上角写"N月"，这样不点开也知道是哪个月的
                     entry.monthText?.let { m ->
                         Text(

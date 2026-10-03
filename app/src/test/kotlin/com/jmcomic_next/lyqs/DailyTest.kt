@@ -5,8 +5,10 @@ import com.jmcomic_next.lyqs.data.remote.dto.DailyDay
 import com.jmcomic_next.lyqs.data.remote.dto.DailyHistory
 import com.jmcomic_next.lyqs.data.remote.dto.DailyHistoryOptions
 import com.jmcomic_next.lyqs.data.remote.dto.DailyPayload
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -44,6 +46,56 @@ class DailyTest {
         assertEquals("999", payload.backgroundPhone)
         assertEquals(1, Daily.signedCount(payload.record))
         assertEquals("1790992577", payload.record[0][0].date)
+    }
+
+    // ---- 以下三条用的是**真实接口响应原文**（我用测试账号直接调接口抓下来的），
+    //      不是我想象的结构。签到接口的坑都在这些细节里。 ----
+
+    @Test
+    fun `real daily payload decodes`() {
+        // 真实响应要点：daily_id 是**数字**；signed 会出现 **null**（不只是 true/false）；
+        // bonus 是**布尔**而不是奖励数字；date 只是"01"这样的日，不是完整日期。
+        val raw = "{\"daily_id\":73,\"three_days_coin\":\"150\",\"seven_days_coin\":\"350\"," +
+            "\"event_name\":\"10月-「来都来了」\",\"background_phone\":\"/media/logo/phone/10PH.jpg\"," +
+            "\"currentProgress\":\"0%\",\"record\":[" +
+            "[{\"date\":\"01\",\"signed\":false,\"bonus\":true},{\"date\":\"02\",\"signed\":null,\"bonus\":true}," +
+            "{\"date\":\"03\",\"signed\":true,\"bonus\":true},{\"date\":\"04\",\"signed\":null,\"bonus\":false}," +
+            "{\"date\":\"05\",\"signed\":null,\"bonus\":false},{\"date\":\"06\",\"signed\":null,\"bonus\":false}," +
+            "{\"date\":\"07\",\"signed\":null,\"bonus\":false}]," +
+            "[{\"date\":\"08\",\"signed\":null,\"bonus\":false}]]}"
+        val payload = Json { isLenient = true; ignoreUnknownKeys = true; coerceInputValues = true }
+            .decodeFromString(DailyPayload.serializer(), raw)
+        assertEquals("73", payload.dailyId)
+        assertEquals("10月-「来都来了」", payload.eventName)
+        assertEquals(8, Daily.totalDays(payload.record))
+        // 只有 signed==true 才算已签：null 与 false 都不算（否则进度会虚高）
+        assertEquals(1, Daily.signedCount(payload.record))
+        assertFalse(Daily.isComplete(payload.record))
+    }
+
+    @Test
+    fun `real history years default to the newest, not the first`() {
+        // 真实响应：从旧到新。取第一个会停在三年前 —— 这是我照真实数据改掉的一个 bug。
+        val years = listOf("2024", "2025", "2026")
+        assertEquals("2026", Daily.defaultHistoryYear(years, 2026))
+        // 今年不在列表里时取最大的一年，而不是第一个
+        assertEquals("2026", Daily.defaultHistoryYear(years, 2030))
+        assertEquals("2025", Daily.defaultHistoryYear(listOf("2024", "2025"), 2000))
+        assertNull(Daily.defaultHistoryYear(emptyList(), 2026))
+    }
+
+    @Test
+    fun `real history entries may have no image at all`() {
+        // 真实响应里 img 全是 null。界面**不能因此丢掉这一格** ——
+        // 源码里月份角标写在"有没有图"的判断之外，所以这一格必须还在。
+        val raw = "{\"list\":[{\"id\":\"64\",\"year\":\"2026\",\"month\":\"1\",\"img\":null}," +
+            "{\"id\":\"73\",\"year\":\"2026\",\"month\":\"10\",\"img\":null}]}"
+        val history = Json { isLenient = true; ignoreUnknownKeys = true }
+            .decodeFromString(DailyHistory.serializer(), raw)
+        assertEquals(2, history.list.size)
+        assertEquals("64", history.list[0].idText)
+        assertEquals("1", history.list[0].monthText)
+        assertNull(history.list[0].imgText)
     }
 
     @Test
