@@ -47,8 +47,8 @@ android {
         //               预测性返回按 SDK 分治（Android 15+ 交给系统）、许可改为 AGPL-3.0-only
         // 1.5.1       = 列表标签屏蔽：列表接口不下发标签，改为后台逐条读详情取标签，命中即从列表隐藏
         // 1.5.2       = 搜索页提示"有结果被标签屏蔽挡住"并给「允许一次」放行；修提示条被列表锚定顶出可视区的坑
-        versionCode = 21
-        versionName = "1.5.2"
+        versionCode = 22
+        versionName = "1.5.3"
     }
 
     signingConfigs {
