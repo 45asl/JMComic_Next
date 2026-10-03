@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.category
 
+import com.jmcomic_next.lyqs.ui.LocalTagBlocker
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -430,6 +431,12 @@ private fun CategoryGrid(
         if (atBottom && comics.isNotEmpty()) onLoadMore()
     }
 
+    // 标签屏蔽（1.5.1）：列表接口不返回标签，命中集合是**异步**补上来的；
+    // 没有解析器（或没有标签规则）时恒为空集合，列表照常显示。
+    val tagBlocker = LocalTagBlocker.current
+    val hiddenIds by remember(tagBlocker) {
+        tagBlocker?.hidden ?: MutableStateFlow(emptySet<String>())
+    }.collectAsStateWithLifecycle()
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = CardSizes.grid),
         state = gridState,
@@ -444,7 +451,10 @@ private fun CategoryGrid(
         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        items(comics, key = { it.id }) { comic ->
+        // 命中标签规则的作品滤掉；animateItem() 让被移除后下面的格子平滑上移而不是跳
+        items(comics.filterNot { it.id in hiddenIds }, key = { it.id }) { comic ->
+            // 条目可见才去取详情拿标签；没有标签规则时 request 内部直接返回，不发任何请求
+            LaunchedEffect(comic.id) { tagBlocker?.request(comic.id) }
             val cover = repo.coverUrl(comic)
             ComicCard(
                 item = comic,
@@ -452,6 +462,7 @@ private fun CategoryGrid(
                 // 封面与标题随路由带给详情页：共享元素的第一帧目标矩形
                 onClick = { onOpenComic(ComicTarget(comic.id, cover, comic.name.orEmpty())) },
                 sharedKey = jmComicSharedKey(comic.id),
+                modifier = Modifier.animateItem(),
                 width = CardSizes.grid,
             )
         }

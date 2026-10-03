@@ -1,5 +1,8 @@
 package com.jmcomic_next.lyqs.ui.screens.home
 
+import com.jmcomic_next.lyqs.ui.LocalTagBlocker
+import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -159,6 +162,13 @@ private fun HomeContent(
     // 重复出现的作品索性不参与：它本来就有两张，往哪张飞都是错的。
     // 代价是"从这两张卡进详情"没有封面动画 —— 这是按「重复的作品不放动画」
     // 这条规则有意为之的，非重复作品的"列表 → 详情"完全不受影响。
+    val tagBlocker = LocalTagBlocker.current
+    // 标签屏蔽（1.5.1）：列表接口不返回标签，命中集合是**异步**补上来的。
+    // 没有解析器（或没有标签规则）时这里恒为空集合，列表照常显示。
+    val hiddenIds by remember(tagBlocker) {
+        tagBlocker?.hidden ?: MutableStateFlow(emptySet<String>())
+    }.collectAsStateWithLifecycle()
+
     val duplicatedComicIds = remember(sections) {
         sections.asSequence()
             .flatMap { it.content.asSequence() }
@@ -190,7 +200,14 @@ private fun HomeContent(
                     contentPadding = PaddingValues(horizontal = Spacing.lg),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                 ) {
-                    items(section.content, key = { it.id }) { comic ->
+                    // 命中标签规则的作品直接滤掉（标签是异步取回来的，所以列表会随结果收敛）。
+                    items(
+                        items = section.content.filterNot { it.id in hiddenIds },
+                        key = { it.id },
+                    ) { comic ->
+                        // 条目可见才去取它的详情（拿标签）。**没有标签规则时 request 内部首行就返回**，
+                        // 一个请求都不会发；并发上限与缓存都在解析器里。
+                        LaunchedEffect(comic.id) { tagBlocker?.request(comic.id) }
                         // 封面地址顺手算一次：卡片自己要用，导航参数也要用
                         val cover = repo.coverUrl(comic)
                         ComicCard(
@@ -205,6 +222,8 @@ private fun HomeContent(
                             } else {
                                 jmComicSharedKey(comic.id)
                             },
+                            // 被滤掉时下面的条目**平滑上移**而不是跳一下
+                            modifier = Modifier.animateItem(),
                         )
                     }
                 }

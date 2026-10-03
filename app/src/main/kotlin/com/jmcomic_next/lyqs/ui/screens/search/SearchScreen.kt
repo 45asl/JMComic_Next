@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.search
 
+import com.jmcomic_next.lyqs.ui.LocalTagBlocker
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -567,8 +568,15 @@ private fun SuggestionPanel(
                     style = MaterialTheme.typography.titleMedium,
                     color = c.text,
                 )
+                // 标签屏蔽（1.5.1）：命中集合是异步补上来的（没有标签规则时恒为空）
+                val tagBlocker = LocalTagBlocker.current
+                val hiddenIds by remember(tagBlocker) {
+                    tagBlocker?.hidden ?: MutableStateFlow(emptySet<String>())
+                }.collectAsStateWithLifecycle()
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                    items(recommend, key = { it.id }) { comic ->
+                    items(recommend.filterNot { it.id in hiddenIds }, key = { it.id }) { comic ->
+                        // 条目可见才去取详情拿标签（没有标签规则时不发请求）
+                        LaunchedEffect(comic.id) { tagBlocker?.request(comic.id) }
                         val cover = coverUrl(comic)
                         ComicCard(
                             item = comic,
@@ -577,6 +585,7 @@ private fun SuggestionPanel(
                                 onOpenComic(ComicTarget(comic.id, cover, comic.name.orEmpty()))
                             },
                             sharedKey = jmComicSharedKey(comic.id),
+                            modifier = Modifier.animateItem(),
                         )
                     }
                 }

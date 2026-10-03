@@ -45,8 +45,9 @@ android {
         // 1.4.2       = 动画改为「触发前位置 → 触发后位置」驱动（共享元素）+ HyperOS 节奏；玻璃不投影、壁纸模糊归用户、悬浮胶囊
         // 1.5.0       = 四栏切换按 KernelSU 几何重做（整屏位移 + 连续底栏胶囊）、重复作品不放动画、
         //               预测性返回按 SDK 分治（Android 15+ 交给系统）、许可改为 AGPL-3.0-only
-        versionCode = 19
-        versionName = "1.5.0"
+        // 1.5.1       = 列表标签屏蔽：列表接口不下发标签，改为后台逐条读详情取标签，命中即从列表隐藏
+        versionCode = 20
+        versionName = "1.5.1"
     }
 
     signingConfigs {

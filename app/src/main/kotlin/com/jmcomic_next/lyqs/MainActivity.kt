@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.jmcomic_next.lyqs.ui.LocalTagBlocker
 import com.jmcomic_next.lyqs.data.prefs.AppPrefs
 import com.jmcomic_next.lyqs.data.prefs.ThemeMode
 import com.jmcomic_next.lyqs.data.wallpaper.WallpaperMode
@@ -79,6 +80,7 @@ class MainActivity : ComponentActivity() {
 
             CompositionLocalProvider(
                 LocalRepository provides repository,
+                LocalTagBlocker provides app.tagBlocker,
                 LocalWallpaperStore provides wallpaperStore,
                 LocalWallpaper provides wallpaper,
             ) {

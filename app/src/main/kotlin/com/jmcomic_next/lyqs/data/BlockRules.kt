@@ -54,8 +54,15 @@ data class BlockRules(
      * 返回命中的标签本身，界面据此提示「含已屏蔽标签：xxx」并给出取消入口 ——
      * 比整页遮住更有用：用户可能只是想确认一下再决定看不看。
      */
-    fun hitsTags(detail: AlbumDetail): List<String> =
-        detail.tags.filter { tag -> tags.any { it.equals(tag, ignoreCase = true) } }
+    fun hitsTags(detail: AlbumDetail): List<String> = hitsTags(detail.tags)
+
+    /** 同上，但直接吃一组标签字符串 —— 列表标签屏蔽拿不到 `AlbumDetail`，只有标签集合。 */
+    fun hitsTags(values: Collection<String>): List<String> =
+        values.filter { tag -> tags.any { it.equals(tag, ignoreCase = true) } }
+
+    /** 这组标签是否命中任一标签规则。 */
+    fun matchesTags(values: Collection<String>): Boolean =
+        tags.isNotEmpty() && values.any { v -> tags.any { it.equals(v, ignoreCase = true) } }
 
     /** 详情页用：作者是否命中关键词（命中则给出「已屏蔽该作者」的提示）。 */
     fun hitsAuthor(detail: AlbumDetail): Boolean =

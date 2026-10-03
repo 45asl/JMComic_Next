@@ -8,11 +8,16 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.memory.MemoryCache
 import coil3.request.crossfade
 import com.jmcomic_next.lyqs.data.JmRepository
+import com.jmcomic_next.lyqs.data.TagCache
+import com.jmcomic_next.lyqs.data.TagBlockResolver
 import com.jmcomic_next.lyqs.data.auth.AuthStore
 import com.jmcomic_next.lyqs.data.prefs.BlockStore
 import com.jmcomic_next.lyqs.data.wallpaper.WallpaperStore
 import com.jmcomic_next.lyqs.data.prefs.ReadProgressStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 
 /**
  * 应用级依赖容器。
@@ -42,6 +47,35 @@ class JmApp : Application(), SingletonImageLoader.Factory {
      * 它懒加载，用户没开壁纸时不会有任何请求。
      */
     val wallpaperStore: WallpaperStore by lazy { WallpaperStore(this, repository.okHttp) }
+
+    /**
+     * 列表里的**标签屏蔽**（1.5.1）。
+     *
+     * 列表接口不返回标签，标签只在详情接口里，所以判定是**异步**的：条目在列表里可见时
+     * 请求一次，结果落进 [TagCache] 并落盘，命中的 id 由 [TagBlockResolver.hidden] 报出。
+     *
+     * 三条与代价有关的取舍：
+     *  · 并发 3 —— 它是「顺手补一层屏蔽」，不该和用户正在看的列表抢带宽；
+     *  · 缓存落盘 —— 否则每滚一次列表就把同一批作品的详情重取一遍；
+     *  · **规则跟随 [BlockStore]** —— 用户加了标签规则要立刻生效，且只用缓存重算、不重新请求。
+     * 没有标签规则时它一个请求都不会发（resolver 内部首行就 return）。
+     */
+    val tagBlocker: TagBlockResolver by lazy {
+        val prefs = getSharedPreferences(PREFS_TAG_CACHE, MODE_PRIVATE)
+        TagBlockResolver(
+            fetchTags = { id -> runCatching { repository.album(id).tags.toSet() }.getOrNull() },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            maxParallel = 3,
+            cache = TagCache().apply { load(prefs.getString(KEY_TAG_CACHE, null)) },
+            onPersist = { text -> prefs.edit().putString(KEY_TAG_CACHE, text).apply() },
+        ).also { resolver ->
+            resolver.setRules(blockStore.snapshot())
+            // 规则变了要重算命中集合（只用缓存，不发请求）
+            CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+                blockStore.state.collect { resolver.setRules(it) }
+            }
+        }
+    }
 
     /** 全局唯一的仓储实例：持有接口主机、请求 Token、图床主机与账号会话。 */
     val repository: JmRepository by lazy {
@@ -79,6 +113,10 @@ class JmApp : Application(), SingletonImageLoader.Factory {
     companion object {
         lateinit var instance: JmApp
             private set
+
+        /** 标签屏蔽缓存的落盘位置（与规则本身分开存：一个是用户输入，一个是网络回来的事实）。 */
+        private const val PREFS_TAG_CACHE = "jm_tag_cache"
+        private const val KEY_TAG_CACHE = "tag_cache_v1"
 
         private val cores: Int = Runtime.getRuntime().availableProcessors()
 

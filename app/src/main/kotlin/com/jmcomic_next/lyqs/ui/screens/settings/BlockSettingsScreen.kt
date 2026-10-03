@@ -97,7 +97,7 @@ fun BlockSettingsScreen(
                         text = "命中即隐藏，匹配忽略大小写。\n" +
                             "· 关键词：作品名或作者包含它\n" +
                             "· 分类：分类或子分类等于它（例如屏蔽「同人」）\n" +
-                            "· 标签：列表接口不下发标签，因此改为在打开作品时提示「含已屏蔽标签」",
+                            "· 标签：列表接口不下发标签，因此改为**在后台逐条读取作品详情**取标签，命中即从列表中隐藏（只在存在标签规则时才会请求）",
                         style = MaterialTheme.typography.labelSmall,
                         color = c.textSecondary,
                         modifier = Modifier.padding(Spacing.md),
