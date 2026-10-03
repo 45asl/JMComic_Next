@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs
 
+import com.jmcomic_next.lyqs.data.prefs.SharedPrefsKeyValueStore
 import com.jmcomic_next.lyqs.BuildConfig
 import android.app.Application
 import coil3.ImageLoader
@@ -36,10 +37,10 @@ class JmApp : Application(), SingletonImageLoader.Factory {
     val authStore: AuthStore by lazy { AuthStore(this) }
 
     /** 阅读进度（作品 → 上次读到哪一话）。服务端历史只有作品粒度，这一层必须在本地。 */
-    val readProgress: ReadProgressStore by lazy { ReadProgressStore(this) }
+    val readProgress: ReadProgressStore by lazy { ReadProgressStore(SharedPrefsKeyValueStore(this, "jm_read_progress")) }
 
     /** 屏蔽规则（关键词 / 分类 / 标签）。 */
-    val blockStore: BlockStore by lazy { BlockStore(this) }
+    val blockStore: BlockStore by lazy { BlockStore(SharedPrefsKeyValueStore(this, "jm_block")) }
 
     /**
      * 壁纸来源与已取到的地址。

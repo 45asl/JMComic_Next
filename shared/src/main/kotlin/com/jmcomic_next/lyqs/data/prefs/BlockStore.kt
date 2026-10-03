@@ -1,6 +1,5 @@
 package com.jmcomic_next.lyqs.data.prefs
 
-import android.content.Context
 import com.jmcomic_next.lyqs.data.BlockRules
 import com.jmcomic_next.lyqs.data.remote.JmJson
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,10 +18,7 @@ import kotlinx.serialization.builtins.serializer
  * 规则同时以 [state] 暴露成 Flow：列表页在规则变化后要重新过滤，
  * 而「我的 → 屏蔽设置」的增删都发生在别的页面上。
  */
-class BlockStore(context: Context) : BlockStoreApi {
-
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+class BlockStore(private val prefs: KeyValueStore) : BlockStoreApi {
 
     private val _state = MutableStateFlow(read())
     override val state: StateFlow<BlockRules> = _state.asStateFlow()
@@ -69,18 +65,12 @@ class BlockStore(context: Context) : BlockStoreApi {
     }
 
     private fun write(rules: BlockRules) {
-        prefs.edit()
-            .putString(KEY_WORDS, JmJson.encodeToString(ListSerializer(String.serializer()), rules.words.toList()))
-            .putString(KEY_TAGS, JmJson.encodeToString(ListSerializer(String.serializer()), rules.tags.toList()))
-            .putString(
-                KEY_CATEGORIES,
-                JmJson.encodeToString(ListSerializer(String.serializer()), rules.categories.toList()),
-            )
-            .apply()
+        prefs.putString(KEY_WORDS, JmJson.encodeToString(ListSerializer(String.serializer()), rules.words.toList()))
+        prefs.putString(KEY_TAGS, JmJson.encodeToString(ListSerializer(String.serializer()), rules.tags.toList()))
+        prefs.putString(KEY_CATEGORIES, JmJson.encodeToString(ListSerializer(String.serializer()), rules.categories.toList()))
     }
 
     private companion object {
-        const val PREFS_NAME = "jm_block"
         const val KEY_WORDS = "words"
         const val KEY_TAGS = "tags"
         const val KEY_CATEGORIES = "categories"

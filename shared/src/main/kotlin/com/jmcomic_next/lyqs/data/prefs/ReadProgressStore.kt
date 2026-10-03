@@ -1,7 +1,5 @@
 package com.jmcomic_next.lyqs.data.prefs
 
-import android.content.Context
-import androidx.core.content.edit
 import com.jmcomic_next.lyqs.data.remote.JmJson
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -21,13 +19,9 @@ import kotlinx.serialization.builtins.serializer
  * 引入 LRU 会让「我读过的作品突然不记得了」这种困惑出现，代价大于收益。
  *
  * 实例本身很轻：多创建几个也无妨，它们的读写都落在同一个 SharedPreferences 文件上
- * （Android 对同一名字的 SharedPreferences 在进程内是复用的），因此各页面各自持有一个即可，
- * 不必为此引入全局单例或 CompositionLocal。
+ * 因此各页面各自持有一个即可，不必为此引入全局单例或 CompositionLocal。
  */
-class ReadProgressStore(context: Context) {
-
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+class ReadProgressStore(private val prefs: KeyValueStore) {
 
     private val serializer = MapSerializer(String.serializer(), String.serializer())
 
@@ -38,14 +32,14 @@ class ReadProgressStore(context: Context) {
         // 值没变就不写盘：详情页每次展示都会调用一次，避免无意义的重写
         if (map[comicId] == chapterId) return
         map[comicId] = chapterId
-        prefs.edit { putString(KEY_MAP, JmJson.encodeToString(serializer, map)) }
+        prefs.putString(KEY_MAP, JmJson.encodeToString(serializer, map))
     }
 
     /** 上次读到的那一话；没有记录时返回 null。 */
     fun lastChapterId(comicId: String): String? =
         readAll()[comicId]?.takeIf { it.isNotBlank() }
 
-    fun clear() = prefs.edit { remove(KEY_MAP) }
+    fun clear() = prefs.remove(KEY_MAP)
 
     private fun readAll(): Map<String, String> {
         val raw = prefs.getString(KEY_MAP, null) ?: return emptyMap()
@@ -54,7 +48,6 @@ class ReadProgressStore(context: Context) {
     }
 
     private companion object {
-        const val PREFS_NAME = "jm_read_progress"
         const val KEY_MAP = "progress"
     }
 }

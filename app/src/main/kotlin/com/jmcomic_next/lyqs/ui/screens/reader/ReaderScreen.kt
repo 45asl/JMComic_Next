@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.reader
 
+import com.jmcomic_next.lyqs.data.prefs.SharedPrefsKeyValueStore
 import com.jmcomic_next.lyqs.LiteFeatures
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -291,7 +292,7 @@ fun ReaderScreen(
     val uiOptions = LocalUiOptions.current
     // LocalContext.current 是 composable 读取，需在 remember 之外取
     val context = LocalContext.current
-    val readProgress = remember(context) { ReadProgressStore(context) }
+    val readProgress = remember(context) { ReadProgressStore(SharedPrefsKeyValueStore(context, "jm_read_progress")) }
     val vm: ReaderViewModel = viewModel(
         key = "reader-$chapterId",
         factory = viewModelFactory {

@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.detail
 
+import com.jmcomic_next.lyqs.data.prefs.SharedPrefsKeyValueStore
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -578,7 +579,7 @@ fun DetailScreen(
             }
         }
     }
-    val readProgress = remember(context) { ReadProgressStore(context) }
+    val readProgress = remember(context) { ReadProgressStore(SharedPrefsKeyValueStore(context, "jm_read_progress")) }
     val vm: DetailViewModel = viewModel(
         key = "detail-$comicId",
         factory = viewModelFactory { initializer { DetailViewModel(repo, readProgress, comicId) } },
