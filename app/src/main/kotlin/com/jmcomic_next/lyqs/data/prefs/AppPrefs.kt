@@ -1,7 +1,5 @@
 package com.jmcomic_next.lyqs.data.prefs
 
-import android.content.Context
-import androidx.core.content.edit
 import com.jmcomic_next.lyqs.ui.theme.ThemeStyle
 import com.jmcomic_next.lyqs.ui.theme.MotionStyle
 import com.jmcomic_next.lyqs.ui.UiOptions
@@ -33,15 +31,12 @@ enum class ReaderMode {
  * 用 SharedPreferences 而不是 DataStore：只有两个键、没有并发写入，
  * 为它引入一个额外的依赖与 Flow 包装并不划算。写操作都是 apply()（异步落盘）。
  */
-class AppPrefs(context: Context) {
-
-    private val sp = context.applicationContext
-        .getSharedPreferences("jm_prefs", Context.MODE_PRIVATE)
+class AppPrefs(private val sp: KeyValueStore) {
 
     var themeMode: ThemeMode
         get() = runCatching { ThemeMode.valueOf(sp.getString(KEY_THEME, null) ?: "") }
             .getOrDefault(ThemeMode.System)
-        set(value) = sp.edit { putString(KEY_THEME, value.name) }
+        set(value) = sp.putString(KEY_THEME, value.name)
 
     /**
      * 界面风格。
@@ -51,34 +46,34 @@ class AppPrefs(context: Context) {
      */
     var themeStyle: ThemeStyle
         get() = ThemeStyle.fromName(sp.getString(KEY_STYLE, null))
-        set(value) = sp.edit { putString(KEY_STYLE, value.name) }
+        set(value) = sp.putString(KEY_STYLE, value.name)
 
     /** 是否启用 Material You 动态取色。默认关闭，理由见 JmTheme 的注释。 */
     var dynamicColor: Boolean
         get() = sp.getBoolean(KEY_DYNAMIC, false)
-        set(value) = sp.edit { putBoolean(KEY_DYNAMIC, value) }
+        set(value) = sp.putBoolean(KEY_DYNAMIC, value)
 
     // ---- 1.4.0 的五个可选项。默认全部关闭 / 取标准档，升级不动任何人的界面 ----
 
     /** 悬浮底栏：底栏浮在内容之上（胶囊形），而不是贴底的一条。 */
     var floatingBottomBar: Boolean
         get() = sp.getBoolean(KEY_FLOATING_BAR, false)
-        set(value) = sp.edit { putBoolean(KEY_FLOATING_BAR, value) }
+        set(value) = sp.putBoolean(KEY_FLOATING_BAR, value)
 
     /** 莫奈取色套用到模糊：用动态取色派生的色相给模糊层上色。 */
     var monetBlur: Boolean
         get() = sp.getBoolean(KEY_MONET_BLUR, false)
-        set(value) = sp.edit { putBoolean(KEY_MONET_BLUR, value) }
+        set(value) = sp.putBoolean(KEY_MONET_BLUR, value)
 
     /** 通透模式：玻璃不覆盖底色、只留模糊；同时打开文字阴影保证可读。 */
     var ultraTranslucent: Boolean
         get() = sp.getBoolean(KEY_ULTRA_TRANSLUCENT, false)
-        set(value) = sp.edit { putBoolean(KEY_ULTRA_TRANSLUCENT, value) }
+        set(value) = sp.putBoolean(KEY_ULTRA_TRANSLUCENT, value)
 
     /** 预测性返回手势（Android 13+）。 */
     var predictiveBack: Boolean
         get() = sp.getBoolean(KEY_PREDICTIVE_BACK, false)
-        set(value) = sp.edit { putBoolean(KEY_PREDICTIVE_BACK, value) }
+        set(value) = sp.putBoolean(KEY_PREDICTIVE_BACK, value)
 
     /**
      * 连载更新提醒（1.5.3）：**可选、默认关**。
@@ -88,12 +83,12 @@ class AppPrefs(context: Context) {
      */
     var serialNotify: Boolean
         get() = sp.getBoolean(KEY_SERIAL_NOTIFY, false)
-        set(value) = sp.edit { putBoolean(KEY_SERIAL_NOTIFY, value) }
+        set(value) = sp.putBoolean(KEY_SERIAL_NOTIFY, value)
 
     /** 上次通知时的未读通知数；只有它变多才再提醒，避免同一批更新被反复通知。 */
     var serialNotifySeen: Int
         get() = sp.getInt(KEY_SERIAL_NOTIFY_SEEN, 0)
-        set(value) = sp.edit { putInt(KEY_SERIAL_NOTIFY_SEEN, value) }
+        set(value) = sp.putInt(KEY_SERIAL_NOTIFY_SEEN, value)
 
     /**
      * 随机推荐页的版式（1.5.6）：网格 / 封面加详情的列表。
@@ -102,17 +97,17 @@ class AppPrefs(context: Context) {
      */
     var randomLayout: String
         get() = sp.getString(KEY_RANDOM_LAYOUT, "grid") ?: "grid"
-        set(value) = sp.edit { putString(KEY_RANDOM_LAYOUT, value) }
+        set(value) = sp.putString(KEY_RANDOM_LAYOUT, value)
 
     /** 收藏标签统计的缓存（1.5.6）：JSON，含统计时间与标签计数。 */
     var favoriteTagsJson: String?
         get() = sp.getString(KEY_FAVORITE_TAGS, null)
-        set(value) = sp.edit { putString(KEY_FAVORITE_TAGS, value) }
+        set(value) = sp.putString(KEY_FAVORITE_TAGS, value)
 
     /** 动效性格：标准 / Plasma。 */
     var motionStyle: MotionStyle
         get() = MotionStyle.fromName(sp.getString(KEY_MOTION_STYLE, null))
-        set(value) = sp.edit { putString(KEY_MOTION_STYLE, value.name) }
+        set(value) = sp.putString(KEY_MOTION_STYLE, value.name)
 
     /**
      * 五个可选项作为一个整体读写。
@@ -149,12 +144,10 @@ class AppPrefs(context: Context) {
                 sp.getString(KEY_SEARCH_HISTORY, null) ?: "[]",
             )
         }.getOrDefault(emptyList())
-        set(value) = sp.edit {
-            putString(
+        set(value) = sp.putString(
                 KEY_SEARCH_HISTORY,
                 JmJson.encodeToString(historySerializer, value.take(SEARCH_HISTORY_LIMIT)),
             )
-        }
 
     /** 记一条搜索词：已存在则提到最前，避免重复项把列表挤满。 */
     fun addSearchHistory(query: String) {
@@ -171,7 +164,7 @@ class AppPrefs(context: Context) {
     var readerMode: ReaderMode
         get() = runCatching { ReaderMode.valueOf(sp.getString(KEY_READER_MODE, null) ?: "") }
             .getOrDefault(ReaderMode.Scroll)
-        set(value) = sp.edit { putString(KEY_READER_MODE, value.name) }
+        set(value) = sp.putString(KEY_READER_MODE, value.name)
 
     private companion object {
         val historySerializer = ListSerializer(String.serializer())

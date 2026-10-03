@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs
 
+import com.jmcomic_next.lyqs.data.prefs.SharedPrefsKeyValueStore
 import com.jmcomic_next.lyqs.data.wallpaper.WallpaperState
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -39,7 +40,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val prefs = AppPrefs(this)
+        val prefs = AppPrefs(SharedPrefsKeyValueStore(this, "jm_prefs"))
         val app = application as JmApp
         val repository = app.repository
         val wallpaperStore = app.wallpaperStore

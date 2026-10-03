@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.data
 
+import com.jmcomic_next.lyqs.data.prefs.SharedPrefsKeyValueStore
 import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -71,7 +72,7 @@ object SerialNotify {
      * 真正的逻辑要能被直接调用与验证。
      */
     suspend fun check(context: Context): Boolean {
-        val prefs = AppPrefs(context)
+        val prefs = AppPrefs(SharedPrefsKeyValueStore(context, "jm_prefs"))
         if (!prefs.serialNotify) return false
 
         val app = context.applicationContext as? JmApp ?: return false

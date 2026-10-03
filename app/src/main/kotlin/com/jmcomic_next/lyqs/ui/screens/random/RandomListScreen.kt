@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.random
 
+import com.jmcomic_next.lyqs.data.prefs.SharedPrefsKeyValueStore
 import com.jmcomic_next.lyqs.ui.components.jmAnimateItem
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -95,7 +96,7 @@ fun RandomListScreen(
     val c = JmTheme.colors
     val context = LocalContext.current
     val repo = LocalRepository.current
-    val prefs = remember(context) { AppPrefs(context) }
+    val prefs = remember(context) { AppPrefs(SharedPrefsKeyValueStore(context, "jm_prefs")) }
     var layout by remember { mutableStateOf(prefs.randomLayout) }
     var items_ by remember { mutableStateOf<List<ListItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -110,7 +111,7 @@ fun RandomListScreen(
     val app = remember(context) { context.applicationContext as JmApp }
     val tagBlocker = LocalTagBlocker.current
     val rules by app.blockStore.state.collectAsStateWithLifecycle()
-    val favoriteTags = remember(context) { FavoriteTags(context) }
+    val favoriteTags = remember(context) { FavoriteTags(SharedPrefsKeyValueStore(context, "jm_prefs")) }
     var favoriteTagCounts by remember { mutableStateOf(favoriteTags.cached()) }
     // 已读到的标签：id -> 标签集合。用 snapshot 的 state map，增量写入不会丢更新
     val knownTags = remember { mutableStateMapOf<String, Set<String>>() }

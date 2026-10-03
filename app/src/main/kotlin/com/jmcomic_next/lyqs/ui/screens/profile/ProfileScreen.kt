@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.profile
 
+import com.jmcomic_next.lyqs.data.prefs.SharedPrefsKeyValueStore
 import androidx.compose.material3.SwitchDefaults
 import com.jmcomic_next.lyqs.LiteFeatures
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -498,7 +499,7 @@ private fun AppearanceCard(
         // 开关状态直接读写 prefs（而不是像 uiOptions 那样从上层传下来）：
         // 它只影响这一个后台闹钟，不参与主题/界面组合，多绕三层参数不值得。
         val notifyContext = LocalContext.current
-        val notifyPrefs = remember(notifyContext) { AppPrefs(notifyContext) }
+        val notifyPrefs = remember(notifyContext) { AppPrefs(SharedPrefsKeyValueStore(notifyContext, "jm_prefs")) }
         var serialNotify by remember { mutableStateOf(notifyPrefs.serialNotify) }
         val askNotifyPermission = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestPermission(),

@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.search
 
+import com.jmcomic_next.lyqs.data.prefs.SharedPrefsKeyValueStore
 import com.jmcomic_next.lyqs.ui.components.jmAnimateItem
 import com.jmcomic_next.lyqs.ui.LocalTagBlocker
 import androidx.compose.foundation.layout.Arrangement
@@ -359,7 +360,7 @@ fun SearchScreen(
 ) {
     val repo = LocalRepository.current
     val context = LocalContext.current
-    val prefs = remember(context) { AppPrefs(context) }
+    val prefs = remember(context) { AppPrefs(SharedPrefsKeyValueStore(context, "jm_prefs")) }
     val vm: SearchViewModel = viewModel(
         factory = viewModelFactory { initializer { SearchViewModel(repo, prefs) } },
     )

@@ -1,7 +1,6 @@
 package com.jmcomic_next.lyqs.data
 
-import android.content.Context
-import com.jmcomic_next.lyqs.data.prefs.AppPrefs
+import com.jmcomic_next.lyqs.data.prefs.KeyValueStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -26,16 +25,14 @@ import kotlinx.serialization.json.Json
  * 扫描上限 [DEFAULT_MAX_WORKS] 本。收藏几百本的用户不该因为一次随机而等几百个请求；
  * 而"偏好哪些标签"这种统计，前 60 本已经足够稳定。
  */
-class FavoriteTags(context: Context) {
-
-    private val prefs = AppPrefs(context)
+class FavoriteTags(private val sp: KeyValueStore) {
     private val json = Json { ignoreUnknownKeys = true }
 
     /** 缓存的统计结果（可能为空 = 还没扫过）。 */
-    fun cached(): Map<String, Int> = decode(prefs.favoriteTagsJson).counts
+    fun cached(): Map<String, Int> = decode(sp.getString(KEY_FAVORITE_TAGS, null)).counts
 
     /** 缓存时间；0 表示没有缓存。 */
-    fun cachedAt(): Long = decode(prefs.favoriteTagsJson).at
+    fun cachedAt(): Long = decode(sp.getString(KEY_FAVORITE_TAGS, null)).at
 
     /**
      * 扫一遍收藏并写入缓存。
@@ -70,14 +67,20 @@ class FavoriteTags(context: Context) {
         }.filter { it.isNotEmpty() }
 
         val counts = RandomRanking.favoriteTags(tagsPerWork)
-        prefs.favoriteTagsJson = json.encodeToString(
-            FavoriteTagCache.serializer(),
-            FavoriteTagCache(at = System.currentTimeMillis(), counts = counts),
+        sp.putString(
+            KEY_FAVORITE_TAGS,
+            json.encodeToString(
+                FavoriteTagCache.serializer(),
+                FavoriteTagCache(at = System.currentTimeMillis(), counts = counts),
+            ),
         )
         counts
     }
 
     companion object {
+        /** 键名沿用 AppPrefs 里原来的取值，保证升级后旧缓存仍能被读到。 */
+        private const val KEY_FAVORITE_TAGS = "favorite_tags_v1"
+
         const val DEFAULT_MAX_WORKS = 60
         const val DEFAULT_MAX_PARALLEL = 3
 
