@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build JMComic_Next APK
 on:
   push:
     branches: [ main ]
@@ -8,28 +8,33 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: 检出代码
+        uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: 安装 JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
-      - name: Cache Gradle
+      - name: Gradle缓存
         uses: actions/cache@v4
         with:
           path: ~/.gradle/caches
-          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-${{ hashFiles('JMComic_Next/**/*.gradle*', 'JMComic_Next/gradle/wrapper/gradle-wrapper.properties') }}
 
-      - name: 给gradlew执行权限
-        run: chmod +x gradlew
+      - name: 更新Gradle Wrapper到9.6.8
+        run: |
+          sed -i 's|distributionUrl=.*|distributionUrl=https\://services.gradle.org/distributions/gradle-9.6.8-bin.zip|g' JMComic_Next/gradle/wrapper/gradle-wrapper.properties
 
-      - name: Build APK
-        run: ./gradlew assembleDebug
+      - name: 赋予gradlew执行权限
+        run: chmod +x JMComic_Next/gradlew
 
-      - name: Upload APK
+      - name: 编译Debug APK
+        run: cd JMComic_Next && ./gradlew assembleDebug
+
+      - name: 上传APK成品
         uses: actions/upload-artifact@v4
         with:
-          name: app-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: JMComic-debug-apk
+          path: JMComic_Next/app/build/outputs/apk/debug/app-debug.apk
