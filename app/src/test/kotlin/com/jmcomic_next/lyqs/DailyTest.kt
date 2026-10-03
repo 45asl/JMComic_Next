@@ -2,6 +2,7 @@ package com.jmcomic_next.lyqs
 
 import com.jmcomic_next.lyqs.data.Daily
 import com.jmcomic_next.lyqs.data.remote.dto.DailyDay
+import com.jmcomic_next.lyqs.data.remote.dto.DailyPayload
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -25,6 +26,22 @@ class DailyTest {
         )
         assertEquals(3, Daily.signedCount(record))
         assertEquals(5, Daily.totalDays(record))
+    }
+
+    @Test
+    fun `daily payload survives fields whose type varies`() {
+        // 与通知同一类问题：这套接口字段类型会变。名字/code 给成数字时
+        // 不该让整条响应解析失败（通知那边真机上就是这么炸的）。
+        val raw = "{\"daily_id\":12345,\"event_name\":678,\"code\":\"200\"," +
+            "\"background_phone\":999,\"record\":[[{\"signed\":\"1\",\"bonus\":5,\"date\":1790992577}]]}"
+        val payload = kotlinx.serialization.json.Json { isLenient = true; ignoreUnknownKeys = true }
+            .decodeFromString(DailyPayload.serializer(), raw)
+        assertEquals("12345", payload.dailyId)
+        assertEquals("678", payload.eventName)
+        assertEquals(200, payload.code)
+        assertEquals("999", payload.backgroundPhone)
+        assertEquals(1, Daily.signedCount(payload.record))
+        assertEquals("1790992577", payload.record[0][0].date)
     }
 
     @Test

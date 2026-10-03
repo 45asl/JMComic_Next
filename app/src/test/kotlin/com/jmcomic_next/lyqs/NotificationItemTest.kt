@@ -1,8 +1,10 @@
 package com.jmcomic_next.lyqs
 
 import com.jmcomic_next.lyqs.data.remote.dto.NotificationItem
+import com.jmcomic_next.lyqs.data.remote.dto.NotificationUnread
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -29,9 +31,9 @@ class NotificationItemTest {
         val ups = item.followedUpdates()
         assertEquals(2, ups.size)
         // 数字型 comicId 也要能读成字符串（服务端两种都给过）
-        assertEquals("1476217", ups[0].comicId)
-        assertEquals("某部作品", ups[0].comicTitle)
-        assertEquals("1478087", ups[1].comicId)
+        assertEquals("1476217", ups[0].comicIdText)
+        assertEquals("某部作品", ups[0].comicTitleText)
+        assertEquals("1478087", ups[1].comicIdText)
         assertNull("追更通知没有 HTML 正文", item.siteNoticeHtml())
     }
 
@@ -47,6 +49,43 @@ class NotificationItemTest {
         val html = item.siteNoticeHtml()
         assertTrue("应返回原文 HTML：$html", html != null && html.contains("服务器维护"))
         assertTrue("站内通知不该产出追更条目", item.followedUpdates().isEmpty())
+    }
+
+    @Test
+    fun `fields whose type is not guaranteed never break parsing`() {
+        // 回归测试：真机上出现过"解析失败"，根因就是这些字段的类型会变
+        //（date 是数字、title 是数字、read 是 0/1）。整条响应不该因此解码失败。
+        val raw = "{\"id\":123,\"type\":\"comic_follow\",\"date\":1790992577,\"read\":0," +
+            "\"title\":456,\"content\":[{\"comicId\":789,\"comicTitle\":123,\"updateDate\":1790992577}]}"
+        val item = json.decodeFromString(NotificationItem.serializer(), raw)
+        assertEquals("123", item.idText)
+        assertEquals("comic_follow", item.typeText)
+        assertEquals("1790992577", item.dateText)
+        assertEquals("456", item.titleText)
+        assertFalse(item.isRead)
+        val up = item.followedUpdates().single()
+        assertEquals("789", up.comicIdText)
+        assertEquals("123", up.comicTitleText)
+        assertEquals("1790992577", up.updateDateText)
+    }
+
+    @Test
+    fun `unread count accepts both a number and an object`() {
+        // 源码里 unread 是对象、unreadCount 是数字，两处都可能出现，两种都得认
+        assertEquals(7, json.decodeFromString(NotificationUnread.serializer(), "{\"data\":7}").total)
+        val asObject = json.decodeFromString(
+            NotificationUnread.serializer(),
+            "{\"data\":{\"all\":9,\"comic_follow\":5,\"site_notice\":4}}",
+        )
+        assertEquals(9, asObject.total)
+        assertEquals(5, asObject.byType("comic_follow"))
+        // 只有分类型、没有 all 时用分项相加兜底
+        val onlyTypes = json.decodeFromString(
+            NotificationUnread.serializer(),
+            "{\"data\":{\"comic_follow\":3,\"site_notice\":2}}",
+        )
+        assertEquals(5, onlyTypes.total)
+        assertEquals(0, json.decodeFromString(NotificationUnread.serializer(), "{}").total)
     }
 
     @Test

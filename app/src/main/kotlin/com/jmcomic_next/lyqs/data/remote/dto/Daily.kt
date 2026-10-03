@@ -27,18 +27,22 @@ data class DailyDay(
 data class DailyPayload(
     @SerialName("daily_id")
     @Serializable(with = FlexStringOrNull::class) val dailyId: String? = null,
-    @SerialName("event_name") val eventName: String? = null,
+    // 名字、code、msg 都按"类型不保证"收 —— 这正是通知那边踩过的坑：
+    // 同一字段在不同响应里可能是字符串或数字，严格类型会让**整条响应**解析失败。
+    @SerialName("event_name")
+    @Serializable(with = FlexStringOrNull::class) val eventName: String? = null,
     /** 活动背景图路径，要拼 `setting` 里的图床主机。 */
-    @SerialName("background_phone") val backgroundPhone: String? = null,
+    @SerialName("background_phone")
+    @Serializable(with = FlexStringOrNull::class) val backgroundPhone: String? = null,
     /** 按周分组的签到记录。 */
     val record: List<List<DailyDay>> = emptyList(),
-    val code: Int = 0,
-    val msg: String? = null,
+    @Serializable(with = FlexInt::class) val code: Int = 0,
+    @Serializable(with = FlexStringOrNull::class) val msg: String? = null,
 )
 
 /** `daily_chk` 的响应：只要 `code` 与 `msg`（"已經簽到過了" 就在 msg 里）。 */
 @Serializable
 data class DailyCheckResult(
-    val code: Int = 0,
-    val msg: String? = null,
+    @Serializable(with = FlexInt::class) val code: Int = 0,
+    @Serializable(with = FlexStringOrNull::class) val msg: String? = null,
 )

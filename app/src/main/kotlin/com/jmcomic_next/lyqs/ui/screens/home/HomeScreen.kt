@@ -172,9 +172,9 @@ private fun HomeContent(
         } else {
             runCatching {
                 repoForNotify.notifications(type = NotificationItem.TYPE_COMIC_FOLLOW)
-                    .list.filterNot { it.read }
+                    .list.filterNot { it.isRead }
                     .flatMap { it.followedUpdates() }
-                    .mapNotNull { it.comicId }
+                    .mapNotNull { it.comicIdText }
                     .toSet()
             }.getOrDefault(emptySet())
         }

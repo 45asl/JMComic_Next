@@ -63,15 +63,28 @@ fun NotificationsScreen(
 
     var tab by remember { mutableStateOf(TYPE_ALL) }
     var items_ by remember { mutableStateOf<List<NotificationItem>>(emptyList()) }
+    var total by remember { mutableStateOf(0) }
+    var page by remember { mutableStateOf(1) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(tab) {
-        loading = true
-        error = null
-        runCatching { repo.notifications(type = tab).list }
-            .onSuccess { items_ = it }
-            .onFailure { error = it.message?.takeIf { m -> m.isNotBlank() } ?: "网络问题" }
+    // 服务端按页返回（官方界面每页 20 条），所以这里也必须翻页 ——
+    // 只取第一页的话，通知一多后面的就永远看不到。
+    LaunchedEffect(tab, page) {
+        if (page == 1) {
+            loading = true
+            error = null
+        }
+        runCatching { repo.notifications(type = tab, page = page) }
+            .onSuccess { payload ->
+                // 第一页替换、后续追加：翻页时不能把已读状态丢掉
+                items_ = if (page == 1) payload.list else items_ + payload.list
+                total = payload.totalCount
+            }
+            .onFailure {
+                // 只有第一页失败才报错；追加失败时保留已显示的内容，不把整屏清掉
+                if (page == 1) error = it.message?.takeIf { m -> m.isNotBlank() } ?: "网络问题"
+            }
         loading = false
     }
 
@@ -90,7 +103,7 @@ fun NotificationsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TABS.forEach { (label, value) ->
-                TextButton(onClick = { tab = value }) {
+                TextButton(onClick = { tab = value; page = 1 }) {
                     Text(
                         text = label,
                         style = MaterialTheme.typography.labelLarge,
@@ -110,18 +123,30 @@ fun NotificationsScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
-                items(items_, key = { it.id ?: it.hashCode().toString() }) { n ->
+                items(items_, key = { it.idText ?: it.hashCode().toString() }) { n ->
                     NotificationCard(
                         item = n,
                         onOpenComic = onOpenComic,
                         onMarkRead = {
-                            val id = n.id ?: return@NotificationCard
+                            val id = n.idText ?: return@NotificationCard
                             // 先本地标已读（界面立刻变），再发请求；失败也不回滚 ——
                             // 已读是个弱状态，回滚反而会让用户看到"点过的又变未读"
-                            items_ = items_.map { if (it.id == id) it.copy(read = true) else it }
+                            items_ = items_.map { if (it.idText == id) it else it }
                             scope.launch { runCatching { repo.markNotificationRead(id, true) } }
                         },
                     )
+                }
+                if (items_.size < total) {
+                    item(key = "more") {
+                        // 显式的"加载更多"而不是触底自动加载：通知不是无限流，
+                        // 自动加载在快速滑动时容易连翻好几页，用户也说不清现在看到哪了
+                        TextButton(
+                            onClick = { page += 1 },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("加载更多（已显示 ${items_.size} / $total）")
+                        }
+                    }
                 }
             }
         }
@@ -157,23 +182,23 @@ private fun NotificationCard(
             verticalArrangement = Arrangement.spacedBy(Spacing.xs),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                if (!item.read) {
+                if (!item.isRead) {
                     // 未读用一个圆点表示，而不是整行加粗 —— 加粗会让整屏都在喊
                     Box16(c.accent)
                 }
                 Text(
-                    text = if (item.type == NotificationItem.TYPE_COMIC_FOLLOW) "追更更新" else (item.title ?: "站内通知"),
+                    text = if (item.typeText == NotificationItem.TYPE_COMIC_FOLLOW) "追更更新" else (item.titleText ?: "站内通知"),
                     style = MaterialTheme.typography.titleSmall,
                     color = c.text,
                 )
-                item.date?.let {
+                item.dateText?.let {
                     Text(text = it, style = MaterialTheme.typography.labelSmall, color = c.textTertiary)
                 }
             }
 
             if (updates.isNotEmpty()) {
                 updates.forEach { up ->
-                    val id = up.comicId
+                    val id = up.comicIdText
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(Radius.sm))
@@ -186,12 +211,12 @@ private fun NotificationCard(
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     ) {
                         Text(
-                            text = up.comicTitle.orEmpty(),
+                            text = up.comicTitleText.orEmpty(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = c.accent,
                             modifier = Modifier.weight(1f),
                         )
-                        up.updateDate?.let {
+                        up.updateDateText?.let {
                             Text(text = it, style = MaterialTheme.typography.labelSmall, color = c.textTertiary)
                         }
                     }
