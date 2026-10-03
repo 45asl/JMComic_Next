@@ -133,6 +133,8 @@ fun ProfileScreen(
     onOpenHistory: () -> Unit,
     onOpenTracking: () -> Unit,
     onOpenNotifications: () -> Unit,
+    /** 打开「关于」整页（1.8.0）。 */
+    onOpenAbout: () -> Unit,
     onOpenTags: () -> Unit,
     onOpenBlock: () -> Unit,
     modifier: Modifier = Modifier,
@@ -185,7 +187,7 @@ fun ProfileScreen(
             item { BlockCard(onOpenBlock) }
             item { ReadingCard(readerMode, onReaderModeChange) }
             item { PrivacyCard() }
-            item { AboutCard() }
+            item { AboutCard(onOpenAbout = onOpenAbout) }
             item { ServerCard() }
         }
     }
@@ -961,7 +963,7 @@ private fun PrivacyCard() {
 }
 
 @Composable
-private fun AboutCard() {
+private fun AboutCard(onOpenAbout: () -> Unit) {
     val c = JmTheme.colors
     val themeStyle = JmTheme.spec.style
     SettingCard(title = "关于") {
@@ -977,6 +979,8 @@ private fun AboutCard() {
             modifier = Modifier.padding(top = Spacing.sm),
         )
     }
+        // 摘要卡只给结论，细节（变体说明、检查更新、链接、许可）在整页里
+        TextButton(onClick = onOpenAbout) { Text("更多信息与检查更新 ›") }
 }
 
 /**

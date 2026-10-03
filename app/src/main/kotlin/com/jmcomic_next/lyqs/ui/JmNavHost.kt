@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui
 
+import com.jmcomic_next.lyqs.ui.screens.about.AboutScreen
 import com.jmcomic_next.lyqs.ui.screens.random.RandomListScreen
 import com.jmcomic_next.lyqs.ui.screens.notifications.NotificationsScreen
 import android.net.Uri
@@ -133,6 +134,7 @@ private const val ROUTE_WEEK = "week"
 private const val ROUTE_TRACKING = "tracking"
 private const val ROUTE_NOTIFICATIONS = "notifications"
 private const val ROUTE_RANDOM = "random"
+private const val ROUTE_ABOUT = "about"
 private const val ROUTE_TAGS = "tags"
 private const val ROUTE_CREATOR = "creator"
 private const val ROUTE_CREATOR_WORK = "creator/work/{id}"
@@ -597,6 +599,7 @@ fun JmNavHost(
                     onOpenHistory = { nav.push(ROUTE_HISTORY) },
                     onOpenTracking = { nav.push(ROUTE_TRACKING) },
                     onOpenNotifications = { nav.push(ROUTE_NOTIFICATIONS) },
+                    onOpenAbout = { nav.push(ROUTE_ABOUT) },
                     onOpenTags = { nav.push(ROUTE_TAGS) },
                     onOpenBlock = { nav.push(ROUTE_BLOCK) },
                 )
@@ -671,6 +674,10 @@ fun JmNavHost(
                     onBack = { nav.popBackStack() },
                     onOpenComic = { target -> nav.push(detailFor(target)) },
                 )
+            }
+
+            composable(ROUTE_ABOUT) {
+                AboutScreen(onBack = { nav.popBackStack() })
             }
 
             composable(ROUTE_NOTIFICATIONS) {
