@@ -121,6 +121,49 @@ class NotificationItemTest {
         assertEquals(0, NotificationUnread.from(null).total)
     }
 
+    // ---- 以下用**真实接口响应原文**（测试账号直接抓的），不是我想象的结构 ----
+
+    @Test
+    fun `real notifications payload is a bare array and a site notice stays readable`() {
+        // 这一条就是当初"解析失败"的根因：服务端把 data 给成**裸数组**，
+        // 而我第一版按 {list,total} 对象解。原文照抄，防止再犯。
+        val raw = "[{\"id\":\"20514329\",\"type\":\"site_notice\",\"date\":\"2026-10-02\"," +
+            "\"read\":false,\"title\":\"国庆小额赞助：19元，享7天无广告！\"," +
+            "\"content\":\"<p>假期追漫，别让广告打扰好心情！<\\/p>\"}]"
+        val page = NotificationPage.from(Json.parseToJsonElement(raw))
+        assertEquals(1, page.list.size)
+        assertEquals(0, page.total)          // 裸数组没有总数，与源码一致
+        val n = page.list.single()
+        assertEquals("site_notice", n.typeText)
+        assertEquals("2026-10-02", n.dateText)
+        assertFalse(n.isRead)
+        assertTrue(n.siteNoticeHtml()!!.contains("假期追漫"))
+        assertTrue(n.followedUpdates().isEmpty())
+    }
+
+    @Test
+    fun `real comic_follow payload yields the updated works`() {
+        // 首页的「更新」角标完全靠这一段：content 是数组、comicId 是**数字**、title 是空串
+        val raw = "[{\"id\":\"20511386\",\"type\":\"comic_follow\",\"date\":\"2026-10-02\"," +
+            "\"read\":false,\"title\":\"\",\"content\":[" +
+            "{\"updateDate\":\"2026-10-02\",\"comicTitle\":\"若叶同学想让你明白心意\",\"comicId\":581940}," +
+            "{\"updateDate\":\"2026-10-02\",\"comicTitle\":\"男人配额制\",\"comicId\":1215915}]}]"
+        val updates = NotificationPage.from(Json.parseToJsonElement(raw)).list.single().followedUpdates()
+        assertEquals(listOf("581940", "1215915"), updates.map { it.comicIdText })
+        assertEquals("男人配额制", updates[1].comicTitleText)
+        // title 是空串时按"没有"处理，界面才能回退到自己的文案
+        assertNull(NotificationPage.from(Json.parseToJsonElement(raw)).list.single().titleText)
+    }
+
+    @Test
+    fun `real unread count has no all key`() {
+        // 真实响应只有分类型计数，**没有 all** —— 必须相加兜底，否则角标永远是 0
+        val unread = NotificationUnread.from(Json.parseToJsonElement("{\"site_notice\":2,\"comic_follow\":4}"))
+        assertEquals(6, unread.total)
+        assertEquals(4, unread.byType("comic_follow"))
+        assertEquals(2, unread.byType("site_notice"))
+    }
+
     @Test
     fun `missing or odd content never throws`() {
         // 字段类型没有保证：content 缺失、是数字、是空数组，都得安静地返回空
