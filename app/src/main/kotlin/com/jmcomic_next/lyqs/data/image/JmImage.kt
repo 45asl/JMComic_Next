@@ -1,13 +1,10 @@
 package com.jmcomic_next.lyqs.data.image
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Rect
 import com.jmcomic_next.lyqs.data.crypto.JmCrypto
 
 /**
- * 漫画图片的切片还原。
+ * 漫画图片的切片还原（Android 侧薄壳）。
  *
  * 服务端会把部分漫画的整页纵向切成若干条并**上下错位重排**，客户端拿到的是乱序版本。
  * 这里等价移植 `JMComic_SRC` 中 `utils/Function.js` 的 `onImageLoaded`：
@@ -28,42 +25,17 @@ object JmImage {
      * @param src 从服务端下载到的乱序图
      * @param page 页码字符串，必须是接口原样给出的值（参与 md5 计算）
      * @return 还原后的新图；不需要还原或参数不合法时**原样返回 [src]**
+     *
+     * 2.0.0 起几何计算与搬移都走 [ImageUnscramble]（跨平台模块）：
+     * 这里只做「位图 → ARGB 数组 → 位图」的转换，两个平台共用同一份算法。
      */
     fun unscramble(src: Bitmap, aid: Int, page: String): Bitmap {
-        val num = JmCrypto.sliceCount(aid, page)
         val w = src.width
         val h = src.height
-        if (num <= 1 || h < num || w <= 0) return src
-
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(out)
-        val paint = Paint(Paint.FILTER_BITMAP_FLAG)
-        val remainder = h % num
-
-        for (i in 0 until num) {
-            var copyH = h / num
-            var py = copyH * i
-            val y = h - copyH * (i + 1) - remainder
-            if (i == 0) {
-                copyH += remainder
-            } else {
-                py += remainder
-            }
-            if (copyH <= 0) continue
-
-            // drawImage 对越界源矩形是宽容的（按可用区域绘制），这里显式裁剪以免抛异常
-            val srcTop = y.coerceAtLeast(0)
-            val srcBottom = (y + copyH).coerceAtMost(h)
-            val usable = srcBottom - srcTop
-            if (usable <= 0) continue
-
-            canvas.drawBitmap(
-                src,
-                Rect(0, srcTop, w, srcBottom),
-                Rect(0, py, w, py + usable),
-                paint,
-            )
-        }
-        return out
+        if (ImageUnscramble.bands(w, h, JmCrypto.sliceCount(aid, page)).isEmpty()) return src
+        val pixels = IntArray(w * h)
+        src.getPixels(pixels, 0, w, 0, 0, w, h)
+        val out = ImageUnscramble.unscramble(pixels, w, h, aid, page)
+        return Bitmap.createBitmap(out, w, h, Bitmap.Config.ARGB_8888)
     }
 }
