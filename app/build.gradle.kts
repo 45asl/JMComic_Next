@@ -86,7 +86,7 @@ android {
      * 开关是**编译期常量**（`BuildConfig.LITE`），所以 `if (!BuildConfig.LITE)` 包住的整段代码
      * 与资源会被 R8 一起删掉，而不是"编译进去但不执行"。
      *
-     * 两个变体的 applicationId 相同：这是同一个应用的裁剪版，用户不该看到两个图标。
+     * 两个变体的 applicationId **不同**（lite 带 .lite 后缀）：这样可以同时安装、互不覆盖。
      */
     flavorDimensions += "edition"
     productFlavors {
@@ -97,8 +97,12 @@ android {
         create("lite") {
             dimension = "edition"
             buildConfigField("boolean", "LITE", "true")
-            // 注意：项目关掉了 resValues 构建特性，所以这里**不能**用 resValue 改应用名。
-            // lite 与 full 的区分靠功能开关，不靠名字 —— 保持同一个应用身份。
+            // 独立包名：两个版本可以**同时安装**、互不覆盖，用户想两个都留着也行。
+            // 代价是数据不共享（lite 与 full 各自的收藏/设置互相独立），这是刻意的：
+            // 共用一个包名就不可能让两者并存。
+            applicationId = "com.jmcomic_next.lyqs.lite"
+            // 应用名走 flavor 专属资源覆盖（app/src/lite/res/values/strings.xml）——
+            // 项目的 resValues 构建特性是关闭的，资源覆盖不需要打开它。
         }
     }
 

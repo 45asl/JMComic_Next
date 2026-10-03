@@ -38,7 +38,7 @@ class DailyTest {
         // 不该让整条响应解析失败（通知那边真机上就是这么炸的）。
         val raw = "{\"daily_id\":12345,\"event_name\":678,\"code\":\"200\"," +
             "\"background_phone\":999,\"record\":[[{\"signed\":\"1\",\"bonus\":5,\"date\":1790992577}]]}"
-        val payload = kotlinx.serialization.json.TestJson
+        val payload = TestJson
             .decodeFromString(DailyPayload.serializer(), raw)
         assertEquals("12345", payload.dailyId)
         assertEquals("678", payload.eventName)
@@ -102,7 +102,7 @@ class DailyTest {
     fun `history calendar tolerates mixed field types`() {
         // 与通知同一类问题：这套接口的类型会变。年份给成数字、图片路径给成数字，
         // 都不该让整条响应失败 —— 读不出来只是少显示一条，而不是整页报错。
-        val json = kotlinx.serialization.json.TestJson
+        val json = TestJson
         val options = json.decodeFromString(
             DailyHistoryOptions.serializer(),
             "{\"list\":[{\"title\":2026},{\"title\":\"2025\"}]}",

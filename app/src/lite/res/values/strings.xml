@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  lite 变体的应用名（1.8.0）。
+
+  用**flavor 专属资源覆盖**而不是 resValue：项目的 resValues 构建特性是关闭的（有意的精简），
+  而资源覆盖不需要打开任何构建特性。full 变体没有这个目录，仍用 src/main 里的名字。
+-->
+<resources>
+    <string name="app_name">JMComic_Next Lite</string>
+</resources>
