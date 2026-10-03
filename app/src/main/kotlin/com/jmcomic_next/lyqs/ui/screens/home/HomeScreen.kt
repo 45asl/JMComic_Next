@@ -78,6 +78,8 @@ fun HomeScreen(
     onOpenSection: (PromoteSection) -> Unit,
     onOpenWeek: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 长按骰子去随机列表页（1.5.6）。 */
+    onOpenRandomList: () -> Unit,
 ) {
     val repo = LocalRepository.current
     val vm: HomeViewModel = viewModel(
@@ -143,6 +145,7 @@ fun HomeScreen(
                     repo = repo,
                     bottomInset = LocalBottomBarInset.current,
                     onOpenComic = onOpenComic,
+                    onOpenRandomList = onOpenRandomList,
                     modifier = Modifier.align(Alignment.BottomEnd),
                 )
             }

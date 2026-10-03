@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui
 
+import com.jmcomic_next.lyqs.ui.screens.random.RandomListScreen
 import com.jmcomic_next.lyqs.ui.screens.notifications.NotificationsScreen
 import android.net.Uri
 import android.os.Build
@@ -131,6 +132,7 @@ private const val ROUTE_COMMENTS = "comments/{aid}"
 private const val ROUTE_WEEK = "week"
 private const val ROUTE_TRACKING = "tracking"
 private const val ROUTE_NOTIFICATIONS = "notifications"
+private const val ROUTE_RANDOM = "random"
 private const val ROUTE_TAGS = "tags"
 private const val ROUTE_CREATOR = "creator"
 private const val ROUTE_CREATOR_WORK = "creator/work/{id}"
@@ -512,6 +514,7 @@ fun JmNavHost(
                         nav.push(moreFor(section.id, section.title.orEmpty()))
                     },
                     onOpenWeek = { nav.push(ROUTE_WEEK) },
+                    onOpenRandomList = { nav.push(ROUTE_RANDOM) },
                 )
                     }
             }
@@ -660,6 +663,13 @@ fun JmNavHost(
                     comicId = backStack.arguments?.getString("aid").orEmpty(),
                     onBack = { nav.popBackStack() },
                     onNeedLogin = { nav.push(authFor("发表评论需要登录")) },
+                )
+            }
+
+            composable(ROUTE_RANDOM) {
+                RandomListScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenComic = { target -> nav.push(detailFor(target)) },
                 )
             }
 
