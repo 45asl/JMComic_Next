@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标（1.8.2）。结构照官方 JM 与 haka 的做法：
+     背景纯色铺满、前景是安全区内的字样 PNG（不自己加 inset，前景 PNG 已按 66% 安全区做好）、
+     monochrome 供 Android 13+ 主题图标取色。 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
 </adaptive-icon>
