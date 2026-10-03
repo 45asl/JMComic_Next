@@ -38,7 +38,7 @@ class DailyTest {
         // 不该让整条响应解析失败（通知那边真机上就是这么炸的）。
         val raw = "{\"daily_id\":12345,\"event_name\":678,\"code\":\"200\"," +
             "\"background_phone\":999,\"record\":[[{\"signed\":\"1\",\"bonus\":5,\"date\":1790992577}]]}"
-        val payload = kotlinx.serialization.json.Json { isLenient = true; ignoreUnknownKeys = true }
+        val payload = kotlinx.serialization.json.TestJson
             .decodeFromString(DailyPayload.serializer(), raw)
         assertEquals("12345", payload.dailyId)
         assertEquals("678", payload.eventName)
@@ -63,7 +63,7 @@ class DailyTest {
             "{\"date\":\"05\",\"signed\":null,\"bonus\":false},{\"date\":\"06\",\"signed\":null,\"bonus\":false}," +
             "{\"date\":\"07\",\"signed\":null,\"bonus\":false}]," +
             "[{\"date\":\"08\",\"signed\":null,\"bonus\":false}]]}"
-        val payload = Json { isLenient = true; ignoreUnknownKeys = true; coerceInputValues = true }
+        val payload = TestJson
             .decodeFromString(DailyPayload.serializer(), raw)
         assertEquals("73", payload.dailyId)
         assertEquals("10月-「来都来了」", payload.eventName)
@@ -90,7 +90,7 @@ class DailyTest {
         // 源码里月份角标写在"有没有图"的判断之外，所以这一格必须还在。
         val raw = "{\"list\":[{\"id\":\"64\",\"year\":\"2026\",\"month\":\"1\",\"img\":null}," +
             "{\"id\":\"73\",\"year\":\"2026\",\"month\":\"10\",\"img\":null}]}"
-        val history = Json { isLenient = true; ignoreUnknownKeys = true }
+        val history = TestJson
             .decodeFromString(DailyHistory.serializer(), raw)
         assertEquals(2, history.list.size)
         assertEquals("64", history.list[0].idText)
@@ -102,7 +102,7 @@ class DailyTest {
     fun `history calendar tolerates mixed field types`() {
         // 与通知同一类问题：这套接口的类型会变。年份给成数字、图片路径给成数字，
         // 都不该让整条响应失败 —— 读不出来只是少显示一条，而不是整页报错。
-        val json = kotlinx.serialization.json.Json { isLenient = true; ignoreUnknownKeys = true }
+        val json = kotlinx.serialization.json.TestJson
         val options = json.decodeFromString(
             DailyHistoryOptions.serializer(),
             "{\"list\":[{\"title\":2026},{\"title\":\"2025\"}]}",
@@ -157,4 +157,7 @@ class DailyTest {
         assertFalse(Daily.isAlreadyChecked(null))
         assertFalse(Daily.isAlreadyChecked(""))
     }
+
+    /** 共享一份：编译器点名"每次使用都创建会很慢"，测试里也一样（1.7.0 清零全部警告）。 */
+    private val TestJson = Json { isLenient = true; ignoreUnknownKeys = true; coerceInputValues = true }
 }
