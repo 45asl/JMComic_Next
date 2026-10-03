@@ -1,5 +1,7 @@
 package com.jmcomic_next.lyqs.data
 
+import com.jmcomic_next.lyqs.data.remote.dto.DailyHistory
+import com.jmcomic_next.lyqs.data.remote.dto.DailyHistoryOptions
 import com.jmcomic_next.lyqs.data.remote.dto.NotificationUnread
 import com.jmcomic_next.lyqs.data.remote.dto.NotificationPayload
 import com.jmcomic_next.lyqs.data.remote.dto.DailyCheckResult
@@ -697,6 +699,20 @@ class JmRepository(
         JmPaths.DAILY,
         DailyPayload.serializer(),
         mapOf("user_id" to uid),
+    )
+
+    /** 签到历史可选的年份（1.5.4 历史日历）。 */
+    suspend fun dailyHistoryOptions(uid: String): DailyHistoryOptions = remote.get(
+        JmPaths.DAILY_LIST,
+        DailyHistoryOptions.serializer(),
+        mapOf("user_id" to uid),
+    )
+
+    /** 某一年（[data] 就是 `dailyHistoryOptions` 里的 title）的签到记录。 */
+    suspend fun dailyHistory(data: String): DailyHistory = remote.post(
+        JmPaths.DAILY_LIST_FILTER,
+        DailyHistory.serializer(),
+        mapOf("data" to data),
     )
 
     /** 打卡。重复打卡由服务端在 `msg` 里说明，不当异常处理（见 [Daily.isAlreadyChecked]）。 */

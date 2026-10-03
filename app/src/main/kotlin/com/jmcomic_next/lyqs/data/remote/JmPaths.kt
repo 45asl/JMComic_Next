@@ -57,6 +57,12 @@ object JmPaths {
      */
     const val DAILY_CHECK = "daily_chk"
 
+    /** 签到历史（API_DAILY_LIST）：`GET {user_id}` → 可选年份列表。 */
+    const val DAILY_LIST = "daily_list"
+
+    /** 签到历史筛选（API_DAILY_LIST_FILTER）：**POST** `{data:<年份>}`。 */
+    const val DAILY_LIST_FILTER = "daily_list/filter"
+
     /** 搜索（API_COMIC_SEARCH），参数 `search_query`、`page`、`o`、`search_type`、`y`、`m`。 */
     const val SEARCH = "search"
 

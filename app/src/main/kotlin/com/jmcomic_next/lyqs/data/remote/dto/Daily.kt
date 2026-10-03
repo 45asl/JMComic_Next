@@ -1,6 +1,7 @@
 package com.jmcomic_next.lyqs.data.remote.dto
 
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.Serializable
 
 /**
@@ -46,3 +47,49 @@ data class DailyCheckResult(
     @Serializable(with = FlexInt::class) val code: Int = 0,
     @Serializable(with = FlexStringOrNull::class) val msg: String? = null,
 )
+
+/**
+ * 签到**历史日历**（1.5.4）。
+ *
+ * 与"今天打卡"是两件事（源码里分别是 `Daily.tsx` 与 `DailyList.tsx`）：
+ * 先 `GET daily_list {user_id}` 拿到**可选的年份**，再用
+ * `POST daily_list/filter {data:<年份>}` 拿那一年的记录 —— 每条带一张图 `img`，
+ * 点开看大图。
+ *
+ * 字段同样按"类型不保证"收：这套接口给过数字也給过字符串。
+ */
+@Serializable
+data class DailyHistoryOptions(
+    val list: List<Option> = emptyList(),
+) {
+    @Serializable
+    data class Option(val title: JsonElement? = null) {
+        val titleText: String? get() = titleTextOrNull(title)
+    }
+}
+
+@Serializable
+data class DailyHistory(
+    val list: List<Entry> = emptyList(),
+    val total: JsonElement? = null,
+) {
+    @Serializable
+    data class Entry(
+        val img: JsonElement? = null,
+        val date: JsonElement? = null,
+        val title: JsonElement? = null,
+        val bonus: JsonElement? = null,
+    ) {
+        val imgText: String? get() = titleTextOrNull(img)
+        val dateText: String? get() = titleTextOrNull(date)
+        val titleText: String? get() = titleTextOrNull(title)
+        val bonusText: String? get() = titleTextOrNull(bonus)
+    }
+}
+
+/** 与 `Notifications.kt` 里同名工具一致：读不出来就当没有，绝不抛。 */
+internal fun titleTextOrNull(el: JsonElement?): String? = when (el) {
+    null -> null
+    is kotlinx.serialization.json.JsonPrimitive -> runCatching { el.content }.getOrNull()?.takeIf { it.isNotBlank() }
+    else -> null
+}

@@ -2,6 +2,8 @@ package com.jmcomic_next.lyqs
 
 import com.jmcomic_next.lyqs.data.Daily
 import com.jmcomic_next.lyqs.data.remote.dto.DailyDay
+import com.jmcomic_next.lyqs.data.remote.dto.DailyHistory
+import com.jmcomic_next.lyqs.data.remote.dto.DailyHistoryOptions
 import com.jmcomic_next.lyqs.data.remote.dto.DailyPayload
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -42,6 +44,26 @@ class DailyTest {
         assertEquals("999", payload.backgroundPhone)
         assertEquals(1, Daily.signedCount(payload.record))
         assertEquals("1790992577", payload.record[0][0].date)
+    }
+
+    @Test
+    fun `history calendar tolerates mixed field types`() {
+        // 与通知同一类问题：这套接口的类型会变。年份给成数字、图片路径给成数字，
+        // 都不该让整条响应失败 —— 读不出来只是少显示一条，而不是整页报错。
+        val json = kotlinx.serialization.json.Json { isLenient = true; ignoreUnknownKeys = true }
+        val options = json.decodeFromString(
+            DailyHistoryOptions.serializer(),
+            "{\"list\":[{\"title\":2026},{\"title\":\"2025\"}]}",
+        )
+        assertEquals(listOf("2026", "2025"), options.list.mapNotNull { it.titleText })
+
+        val history = json.decodeFromString(
+            DailyHistory.serializer(),
+            "{\"list\":[{\"img\":123,\"date\":\"2026-10-01\",\"bonus\":5}],\"total\":\"1\"}",
+        )
+        assertEquals("123", history.list[0].imgText)
+        assertEquals("2026-10-01", history.list[0].dateText)
+        assertEquals("5", history.list[0].bonusText)
     }
 
     @Test
