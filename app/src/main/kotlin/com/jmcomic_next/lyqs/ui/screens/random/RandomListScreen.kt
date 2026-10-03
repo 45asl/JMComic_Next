@@ -30,15 +30,27 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import com.jmcomic_next.lyqs.JmApp
+import com.jmcomic_next.lyqs.data.FavoriteTags
+import com.jmcomic_next.lyqs.data.RandomRanking
 import com.jmcomic_next.lyqs.data.prefs.AppPrefs
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
 import com.jmcomic_next.lyqs.ui.ComicTarget
@@ -83,6 +95,57 @@ fun RandomListScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var round by remember { mutableStateOf(0) }
 
+    // ---- 个性化排序：按"收藏里出现最多的标签"给这批随机排序 ----
+    //
+    // 标签拿不到现成的（列表接口不下发），所以每个候选都要额外读一次详情。
+    // 于是顺序是"先按原始顺序显示、标签陆续到了再重排"，而不是等全部读完才显示 ——
+    // 后者会让用户盯着空屏等一串请求。
+    val app = remember(context) { context.applicationContext as JmApp }
+    val rules by app.blockStore.state.collectAsStateWithLifecycle()
+    val favoriteTags = remember(context) { FavoriteTags(context) }
+    var favoriteTagCounts by remember { mutableStateOf(favoriteTags.cached()) }
+    // 已读到的标签：id -> 标签集合。用 snapshot 的 state map，增量写入不会丢更新
+    val knownTags = remember { mutableStateMapOf<String, Set<String>>() }
+
+    // 收藏标签统计：缓存在一周内就不重扫（否则每次进这一页都要打几十个详情请求）
+    LaunchedEffect(round) {
+        val now = System.currentTimeMillis()
+        favoriteTagCounts = if (FavoriteTags.isFresh(favoriteTags.cachedAt(), now)) {
+            favoriteTags.cached()
+        } else {
+            runCatching { favoriteTags.refresh(repo) }.getOrDefault(favoriteTags.cached())
+        }
+    }
+
+    // 逐条读标签：并发上限 3（突发一批请求不该把服务端和自己都压住）
+    LaunchedEffect(items_) {
+        val gate = Semaphore(3)
+        coroutineScope {
+            items_.map { item ->
+                async {
+                    if (knownTags.containsKey(item.id)) return@async
+                    val tags = gate.withPermit {
+                        withContext(Dispatchers.IO) {
+                            runCatching { repo.album(item.id).tags.toSet() }.getOrNull()
+                        }
+                    }
+                    // 只写自己这一条，不整体替换 —— 整体替换会让先到的结果被后到的覆盖
+                    if (tags != null) knownTags[item.id] = tags
+                }
+            }.awaitAll()
+        }
+    }
+
+    // 排序：命中收藏标签多的靠前；命中屏蔽规则的整条移除（"飞起来"）
+    val ordered = remember(items_, knownTags.toMap(), favoriteTagCounts, rules) {
+        RandomRanking.rank(
+            items = items_,
+            tagsOf = { knownTags[it.id] },
+            favoriteTags = favoriteTagCounts,
+            isBlocked = { tags -> rules.hitsTags(tags).isNotEmpty() },
+        )
+    }
+
     LaunchedEffect(round) {
         loading = true
         error = null
@@ -95,7 +158,12 @@ fun RandomListScreen(
     Column(modifier.fillMaxSize()) {
         GlassTopBar(
             title = "随机推荐",
-            subtitle = if (items_.isEmpty()) null else "已排除你屏蔽名单里的作品",
+            subtitle = when {
+                items_.isEmpty() -> null
+                favoriteTagCounts.isEmpty() -> "已排除你屏蔽名单里的作品"
+                // 说明排序依据：用户看到顺序变了应该知道为什么
+                else -> "已排除屏蔽名单 · 按你收藏偏好的标签排序"
+            },
             navigation = {
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = c.accent)
@@ -130,9 +198,12 @@ fun RandomListScreen(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
-                items(items_, key = { it.id }) { comic ->
+                items(ordered, key = { it.id }) { comic ->
                     Column(
-                        modifier = Modifier.clickable { onOpenComic(target(repo, comic)) },
+                        // 命中屏蔽的条目会从这里消失；animateItem 让它"飞出去"而不是瞬间不见
+                        modifier = Modifier
+                            .animateItem()
+                            .clickable { onOpenComic(target(repo, comic)) },
                         verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
                     ) {
                         AsyncImage(
@@ -160,10 +231,11 @@ fun RandomListScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
-                items(items_, key = { it.id }) { comic ->
+                items(ordered, key = { it.id }) { comic ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .animateItem()
                             .clickable { onOpenComic(target(repo, comic)) },
                         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                     ) {
