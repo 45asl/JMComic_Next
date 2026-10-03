@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.profile
 
+import androidx.compose.material3.SwitchDefaults
 import com.jmcomic_next.lyqs.LiteFeatures
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.foundation.clickable
@@ -635,7 +636,19 @@ private fun OptionSwitch(
             )
             Text(desc, style = MaterialTheme.typography.labelSmall, color = c.textTertiary)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            // **关态必须看得见**（1.8.0 用户反馈）：Material3 默认的关态轨道色在自定义调色板
+            // （尤其是 lite 的实心风格）下和卡片底色太接近，用户看不出"这个开关现在是关的"，
+            // 只能看到一个小小的滑钮。加一条描边，把"轨道在哪、有多长"画出来。
+            colors = SwitchDefaults.colors(
+                uncheckedTrackColor = c.surface2,
+                uncheckedBorderColor = c.textTertiary,
+                uncheckedThumbColor = c.textSecondary,
+            ),
+        )
     }
 }
 
