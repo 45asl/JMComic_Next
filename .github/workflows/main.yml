@@ -1,42 +1,9 @@
-name: Build JMComic APK
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+# 1. 安装JDK21
+sudo apt update && sudo apt install -y openjdk-21-jdk
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
+# 2. 给gradlew权限
+chmod +x gradlew
 
-      - name: 打印目录结构，确认文件位置
-        run: ls -la && ls -la gradle/wrapper/ || echo "gradle文件夹不存在"
-
-      - name: 安装 JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Gradle缓存
-        uses: actions/cache@v4
-        with:
-          path: ~/.gradle/caches
-          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-
-      - name: 赋予gradlew执行权限
-        run: chmod +x gradlew
-
-      - name: 更新Gradle Wrapper到9.6.8
-        run: ./gradlew wrapper --gradle-version 9.6.8
-
-      - name: 编译Debug APK
-        run: ./gradlew assembleDebug
-
-      - name: 上传APK成品
-        uses: actions/upload-artifact@v4
-        with:
-          name: JMComic-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+# 3. 升级gradle wrapper到9.6.8（解决AGP版本要求）
+./gradlew wrapper --gradle-version=9.6.8
