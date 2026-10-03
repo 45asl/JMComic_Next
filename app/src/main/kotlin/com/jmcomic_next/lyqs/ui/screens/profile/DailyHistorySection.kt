@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.profile
 
+import androidx.compose.foundation.layout.Box
 import coil3.compose.AsyncImage
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
@@ -143,15 +144,30 @@ fun DailyHistorySection(
         LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             items(entries, key = { it.imgText ?: it.hashCode().toString() }) { entry ->
                 val url = entry.imgText ?: return@items
-                AsyncImage(
-                    model = url,
-                    contentDescription = entry.dateText ?: "签到记录",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(Radius.sm))
-                        .clickable { preview = url },
-                )
+                Box {
+                    AsyncImage(
+                        model = url,
+                        contentDescription = entry.dateText ?: "签到记录",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(Radius.sm))
+                            .clickable { preview = url },
+                    )
+                    // 月份角标：源码在缩略图左上角写"N月"，这样不点开也知道是哪个月的
+                    entry.monthText?.let { m ->
+                        Text(
+                            text = "${m}月",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = c.textOnAccent,
+                            modifier = Modifier
+                                .padding(2.dp)
+                                .clip(RoundedCornerShape(Radius.sm))
+                                .background(c.accent)
+                                .padding(horizontal = 4.dp, vertical = 1.dp),
+                        )
+                    }
+                }
             }
         }
 

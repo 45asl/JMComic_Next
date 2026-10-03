@@ -75,11 +75,17 @@ data class DailyHistory(
 ) {
     @Serializable
     data class Entry(
+        /** 源码里拿它当列表 key，也当图片加载失败时的替代文字。 */
+        val id: JsonElement? = null,
+        /** 记录的月份，源码在图上以"N月"角标显示。 */
+        val month: JsonElement? = null,
         val img: JsonElement? = null,
         val date: JsonElement? = null,
         val title: JsonElement? = null,
         val bonus: JsonElement? = null,
     ) {
+        val idText: String? get() = titleTextOrNull(id)
+        val monthText: String? get() = titleTextOrNull(month)
         val imgText: String? get() = titleTextOrNull(img)
         val dateText: String? get() = titleTextOrNull(date)
         val titleText: String? get() = titleTextOrNull(title)
