@@ -4,8 +4,7 @@ import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.auth.AuthStore
 import com.jmcomic_next.lyqs.data.auth.SecureStore
 import com.jmcomic_next.lyqs.data.prefs.BlockStore
-import com.jmcomic_next.lyqs.data.remote.JmHostDiscovery
-import com.jmcomic_next.lyqs.data.remote.JmSession
+
 import kotlinx.coroutines.runBlocking
 import java.io.File
 
@@ -34,21 +33,16 @@ fun main(args: Array<String>): Unit = runBlocking {
     )
     val auth = AuthStore(secure)
 
-    // 显式做主机发现再建仓储。
-    //
-    // 这一条是冒烟测试逼出来的：仓储内部只在**列表类请求**前懒执行发现，
-    // 而 login() 不经过那条路径。Android 上不容易暴露（用户总是先看到首页，
-    // 那时发现已经发生），但桌面端若先显示登录页就会直接报「API 主机尚未初始化」。
-    val session = JmSession()
-    val host = JmHostDiscovery.discover(session)
-    println("[冒烟] 主机发现：${host ?: "(失败，全部入口不可用)"}")
-
     val repo = JmRepository.create(
         authStore = auth,
-        session = session,
         blockStore = BlockStore(PreferencesKeyValueStore("jm_block")),
         debug = true,
     )
+
+    // 启动时先 bootstrap：它做主机发现，并从配置接口取回**图床主机**。
+    // 缺了后者的后果是所有封面都加载不出来 —— 而这条路径在 Android 上是隐式发生的。
+    repo.bootstrap()
+    println("[冒烟] 引导完成（主机发现 + 图床主机）")
 
     val user = System.getenv("JM_USER")
     val pass = System.getenv("JM_PASS")
@@ -64,6 +58,7 @@ fun main(args: Array<String>): Unit = runBlocking {
     println("[冒烟] 首页第一页：${page.items.size} 条 / 服务端共 ${page.total} 条 / 被屏蔽规则挡掉 ${page.hidden} 条")
     page.items.take(5).forEach { println("    - ${it.name ?: "(无标题)"} · ${it.author ?: "?"}") }
 
+    println("[冒烟] 封面地址示例：${repo.coverUrl(page.items.first())}")
     println("[冒烟] 结束")
     kotlin.system.exitProcess(0)
 }
