@@ -1008,3 +1008,27 @@ SharedPreferences 时它被吞掉，读回来每部作品的标签粘成**一个
 
 **教训：节能/性能类的前后对比，至少要"先各预热一次 + 换顺序复测"**。
 只测一轮并且固定顺序，很容易得出一个方向完全相反的结论 —— 而那种结论会被写进发布说明。
+
+## 桌面端（2.0.0）在开发容器里无法可视化验证
+
+开发环境是 Termux + tmoe 的 Debian 12 chroot（aarch64，无 GPU）。桌面端能编译、
+能启动，但**界面画不出来**，逐条记录以便日后不重复排查：
+
+1. **Compose 的 Skia 层在 Xvfb 下初始化失败**：
+   `ExceptionInInitializerError at SurfaceSkiaLayerComponent.<init>`。
+   指定 `-Dskiko.renderApi=SOFTWARE` 无效；容器里 Mesa 与 `swrast_dri.so` 都在，
+   再加 `LIBGL_ALWAYS_SOFTWARE=1` / `GALLIUM_DRIVER=llvmpipe` 仍无效。
+2. **`gradle run` 不能用来测界面**：Gradle 的 JVM 带 `java.awt.headless=true`，
+   一跑就抛 `HeadlessException`，这条路根本不可能显示窗口。
+3. **在该调用路径下 JDK 自身起不来**：`/usr/bin/java` 与解压的 Temurin 都报
+   `libjli.so: cannot open shared object file`，但同一路径下 Gradle 能正常使用 JDK。
+   具体原因未查明，**如实记为未解决**。
+4. **容器的 Termux 家目录 bind mount 会掉**，需要重新 `mount -o bind` 才能看到仓库。
+
+### 顺带两条通用教训
+
+- **Java 的 `System.out` 重定向到文件是带缓冲的**：进程被 `kill` 时缓冲丢失，
+  会出现"程序明明在跑却一条日志都没有"的假象。要看实时输出请用 `System.err`（无缓冲），
+  或者让进程正常退出。
+- **界面可视化验证的可行路线**：用 Compose 自带的 `ImageComposeScene` / `renderComposeScene`
+  把界面**离屏渲染成 PNG**，完全不依赖 X 服务器与 GL。这是在本环境里"看见"界面的唯一现实办法。
