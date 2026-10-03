@@ -61,6 +61,7 @@ import com.jmcomic_next.lyqs.data.remote.dto.ListItem
 import com.jmcomic_next.lyqs.ui.ComicTarget
 import com.jmcomic_next.lyqs.ui.LocalBottomBarInset
 import com.jmcomic_next.lyqs.ui.LocalRepository
+import com.jmcomic_next.lyqs.ui.LocalTagBlocker
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
@@ -106,6 +107,7 @@ fun RandomListScreen(
     // 于是顺序是"先按原始顺序显示、标签陆续到了再重排"，而不是等全部读完才显示 ——
     // 后者会让用户盯着空屏等一串请求。
     val app = remember(context) { context.applicationContext as JmApp }
+    val tagBlocker = LocalTagBlocker.current
     val rules by app.blockStore.state.collectAsStateWithLifecycle()
     val favoriteTags = remember(context) { FavoriteTags(context) }
     var favoriteTagCounts by remember { mutableStateOf(favoriteTags.cached()) }
@@ -148,9 +150,14 @@ fun RandomListScreen(
         coroutineScope {
             todo.map { id ->
                 async {
-                    val tags = gate.withPermit {
+                    // 先问共享缓存：首页/搜索/分类读过的作品这里不该再读一次
+                    val cached = tagBlocker?.cachedTags(id)
+                    val tags = cached ?: gate.withPermit {
                         withContext(Dispatchers.IO) {
                             runCatching { repo.album(id).tags.toSet() }.getOrNull()
+                        }?.also { fetched ->
+                            // 回填：本次运行内别处再用到这部作品就不用再读；命中屏蔽规则也会随之收敛
+                            if (fetched.isNotEmpty()) tagBlocker?.rememberTags(id, fetched)
                         }
                     }
                     // 只写自己这一条，不整体替换 —— 整体替换会让先到的结果被后到的覆盖

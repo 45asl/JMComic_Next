@@ -374,4 +374,20 @@ class TagBlockResolverTest {
         assertTrue(resolver.hidden.value.isEmpty())
         assertEquals(emptyList<String>(), fetch.calls)
     }
+
+    @Test
+    fun `tags filled in from elsewhere are not fetched again but still block`() = runBlocking {
+        // 1.6.0：随机页/收藏扫描会把别处读到的标签回填进同一份缓存。
+        // 契约有两条：回填过的作品不该再读一次详情；回填同样要能触发屏蔽。
+        val fetch = FakeFetch(mapOf("1" to setOf("巨乳")))
+        val resolver = TagBlockResolver(fetch.asFetch(), scope())
+        resolver.setRules(BlockRules(tags = setOf("巨乳")))
+
+        resolver.rememberTags("1", setOf("巨乳"))
+        resolver.request("1")
+
+        assertEquals("回填过的作品不该再读一次详情", emptyList<String>(), fetch.calls)
+        assertEquals(setOf("1"), resolver.hidden.value)
+        assertEquals(setOf("巨乳"), resolver.cachedTags("1"))
+    }
 }

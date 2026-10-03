@@ -118,6 +118,29 @@ class TagBlockResolver(
         }
     }
 
+    /**
+     * 读**已缓存**的标签；没有则返回 null（1.6.0）。
+     *
+     * 开放出来是为了让别的页面复用这份缓存。之前随机页与收藏扫描各自调 `repo.album(id)` 取标签，
+     * 于是首页/搜索/分类**已经读过**的作品，它们会再读一遍 —— 同一份数据、同一个进程、两次请求。
+     */
+    @Synchronized
+    fun cachedTags(id: String): Set<String>? = cache.get(id)
+
+    /**
+     * 把别处读到的标签回填进缓存（1.6.0）。
+     *
+     * 回填之后：同一部作品在本次运行内不会再被读第二次（缓存 + 落盘），
+     * 而且如果它命中屏蔽规则，列表会通过 [hidden] 收敛 —— 与解析器自己读到时的行为一致。
+     */
+    @Synchronized
+    fun rememberTags(id: String, tags: Set<String>) {
+        if (tags.isEmpty()) return
+        cache.put(id, tags)
+        onPersist(cache.dump())
+        recompute()
+    }
+
     /** 只用**已缓存**的标签重算命中集合（约束 5：不发任何请求）。 */
     @Synchronized
     private fun recompute() {
