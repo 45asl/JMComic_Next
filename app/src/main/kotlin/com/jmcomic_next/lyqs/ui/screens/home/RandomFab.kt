@@ -1,5 +1,15 @@
 package com.jmcomic_next.lyqs.ui.screens.home
 
+import com.jmcomic_next.lyqs.data.Daily
+import androidx.compose.ui.Alignment
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -93,6 +103,98 @@ fun RandomFab(
                 modifier = Modifier
                     .padding(14.dp)
                     .rotate(spin.value),
+            )
+        }
+    }
+}
+
+/**
+ * 首页的**快捷本日签到**按钮（1.5.6）。
+ *
+ * 位置照源码：官方首页右侧那条浮动按钮列里，日历图标（每日签到）就在骰子的**上面**
+ * （`MainTopBtn.tsx` 的 `CalendarTodayIcon`）。区别是它那边是"跳到签到页"，
+ * 这里是**点一下直接签**，签完图标变成对钩 —— 用户要的是少点一次。
+ *
+ * 三个判定都按服务端为准，不靠本地记状态：
+ * - 已经签过（服务端日历里今天 `signed`）→ 显示对钩、不发请求；
+ * - 没有进行中的活动（`daily_id` 为空）→ 如实说，不当成失败；
+ * - 重复打卡由服务端在 `msg` 里说明（见 [com.jmcomic_next.lyqs.data.Daily.isAlreadyChecked]）。
+ *
+ * **未登录不显示这个按钮**：签到要账号，而"点了让你去登录"在这里是多余的一步。
+ */
+@Composable
+fun DailyQuickFab(
+    repo: JmRepository,
+    bottomInset: Dp,
+    modifier: Modifier = Modifier,
+) {
+    val c = JmTheme.colors
+    val scope = rememberCoroutineScope()
+    val loggedIn = repo.auth.isLoggedIn
+    var signedToday by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<String?>(null) }
+
+    // 进首页时问一次服务端"今天签过没有"：本地不记这个状态，换设备/重装都不会错
+    LaunchedEffect(loggedIn) {
+        if (!loggedIn) {
+            signedToday = false
+            return@LaunchedEffect
+        }
+        val uid = repo.auth.member?.uid
+        if (uid.isNullOrBlank()) return@LaunchedEffect
+        runCatching { repo.daily(uid) }.getOrNull()?.let { d ->
+            signedToday = Daily.isSignedToday(
+                d.record,
+                java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH),
+            )
+        }
+    }
+
+    if (!loggedIn) return
+
+    // 摆在骰子**上面**：52dp 的按钮 + 间距
+    Box(modifier.padding(end = Spacing.lg, bottom = bottomInset + Spacing.md + 64.dp)) {
+        GlassSurface(
+            level = GlassLevel.Raised,
+            shape = RoundedCornerShape(percent = 50),
+            modifier = Modifier.size(52.dp).combinedClickable(onClick = {
+                scope.launch {
+                    val uid = repo.auth.member?.uid.orEmpty()
+                    val d = runCatching { repo.daily(uid) }.getOrNull()
+                    val id = d?.dailyId
+                    when {
+                        id.isNullOrBlank() -> notice = "现在没有进行中的签到活动"
+                        d != null && Daily.isSignedToday(
+                            d.record,
+                            java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH),
+                        ) -> {
+                            signedToday = true
+                            notice = "今天已经签过了"
+                        }
+                        else -> runCatching { repo.dailyCheck(uid, id) }.fold(
+                            onSuccess = { res ->
+                                signedToday = true
+                                notice = res.msg?.takeIf { it.isNotBlank() } ?: "签到成功"
+                            },
+                            onFailure = { notice = "签到失败，稍后再试" },
+                        )
+                    }
+                }
+            }),
+        ) {
+            Icon(
+                imageVector = if (signedToday) Icons.Filled.Check else Icons.Filled.CalendarMonth,
+                contentDescription = if (signedToday) "今天已签到" else "快捷签到",
+                tint = c.accent,
+                modifier = Modifier.padding(14.dp),
+            )
+        }
+        notice?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelSmall,
+                color = c.textSecondary,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 60.dp),
             )
         }
     }

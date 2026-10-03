@@ -119,6 +119,21 @@ class DailyTest {
     }
 
     @Test
+    fun `knows whether today is already signed`() {
+        // 真实响应里 date 只是"几号"（"01"），所以用当月日号去对
+        val record = listOf(
+            listOf(DailyDay(signed = true, date = "01"), DailyDay(signed = false, date = "02")),
+            listOf(DailyDay(signed = false, date = "15")),
+        )
+        assertTrue(Daily.isSignedToday(record, 1))
+        assertFalse(Daily.isSignedToday(record, 2))
+        assertFalse(Daily.isSignedToday(record, 15))
+        // 对不上任何一天时返回 false —— 宁可让按钮可点，也不要错误地显示"已签"
+        assertFalse(Daily.isSignedToday(record, 28))
+        assertFalse(Daily.isSignedToday(emptyList(), 1))
+    }
+
+    @Test
     fun `complete only when every day of every week is signed`() {
         assertTrue(Daily.isComplete(listOf(listOf(day(true), day(true)), listOf(day(true)))))
         // 只差一天就不算完成 —— 这正是"按钮该不该禁用"的依据

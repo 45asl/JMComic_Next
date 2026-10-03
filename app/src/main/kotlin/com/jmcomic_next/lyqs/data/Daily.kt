@@ -53,4 +53,19 @@ object Daily {
         years.firstOrNull { it.trim() == currentYear.toString() }
             ?: years.mapNotNull { it.trim().toIntOrNull() }.maxOrNull()?.toString()
             ?: years.firstOrNull()
+
+    /**
+     * **今天**签过没有（1.5.6 快捷签到按钮用）。
+     *
+     * 日历里的 `date` 只是"几号"（实测是 `"01"`、`"02"` 这样的两位字符串，不是完整日期），
+     * 所以用当月的日号去对。对不上（例如服务端把上个月的日历给了我们）就返回 false ——
+     * **宁可让按钮可点**：点一下最多是服务端回一句"已经签过了"，而错误地显示"已签"会让用户
+     * 以为今天签不了。
+     */
+    fun isSignedToday(record: List<List<DailyDay>>, dayOfMonth: Int): Boolean =
+        record.flatten().any { it.signed && dayNumberOf(it.date) == dayOfMonth }
+
+    /** 从 `"01"` 或 `"2026-10-01"` 里取出日号；取不出来返回 null。 */
+    private fun dayNumberOf(date: String?): Int? =
+        date?.trim()?.takeLast(2)?.trimStart('0')?.takeIf { it.isNotEmpty() }?.toIntOrNull()
 }

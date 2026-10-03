@@ -141,6 +141,10 @@ fun HomeScreen(
                     onLoadMore = { vm.loadMore() },
                     onRetryLoadMore = { vm.retryLoadMore() },
                 )
+                DailyQuickFab(
+                    repo = repo,
+                    bottomInset = LocalBottomBarInset.current,
+                )
                 RandomFab(
                     repo = repo,
                     bottomInset = LocalBottomBarInset.current,
