@@ -35,7 +35,6 @@ import coil3.compose.AsyncImage
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
 import com.jmcomic_next.lyqs.ui.ComicTarget
-import com.jmcomic_next.lyqs.ui.UiOptions
 import com.jmcomic_next.lyqs.ui.components.GlassLevel
 import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
@@ -67,7 +66,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun RandomFab(
     repo: JmRepository,
-    uiOptions: UiOptions,
     bottomInset: androidx.compose.ui.unit.Dp,
     onOpenComic: (ComicTarget) -> Unit,
     modifier: Modifier = Modifier,

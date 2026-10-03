@@ -127,14 +127,25 @@ fun HomeScreen(
                     onRetry = { vm.refresh() },
                 )
 
-            else -> HomeContent(
-                state = state,
-                repo = repo,
-                onOpenComic = onOpenComic,
-                onOpenSection = onOpenSection,
-                onLoadMore = { vm.loadMore() },
-                onRetryLoadMore = { vm.retryLoadMore() },
-            )
+            // 随机本子（1.5.6）：源码在首页右下角放了一个骰子浮动按钮，
+            // 点了直接进一本随机作品。这里只包在"内容已就绪"这一支里 ——
+            // 加载中/加载失败时不该出现一个点了没反应的按钮。
+            else -> Box(modifier = Modifier.fillMaxSize()) {
+                HomeContent(
+                    state = state,
+                    repo = repo,
+                    onOpenComic = onOpenComic,
+                    onOpenSection = onOpenSection,
+                    onLoadMore = { vm.loadMore() },
+                    onRetryLoadMore = { vm.retryLoadMore() },
+                )
+                RandomFab(
+                    repo = repo,
+                    bottomInset = LocalBottomBarInset.current,
+                    onOpenComic = onOpenComic,
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                )
+            }
         }
     }
 }
