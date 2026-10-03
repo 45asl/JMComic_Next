@@ -3,6 +3,9 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Android 13+ 发通知需要运行时授权。**必须声明**：没声明的权限，requestPermission 会立刻返回拒绝，
+         用户会看到开关点了没反应（1.8.0 修的这个 bug 就是漏了这一行）。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".JmApp"
