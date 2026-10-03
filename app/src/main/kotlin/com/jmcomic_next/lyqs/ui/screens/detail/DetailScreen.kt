@@ -405,10 +405,12 @@ class DetailViewModel(
 
     fun unblockAuthor() {
         val authors = _state.value.detail?.author.orEmpty()
-        val rules = repo.blockStore?.snapshot()
+        // 跨模块的公开属性不能智能转换，先取到局部变量
+        val store = repo.blockStore
+        val rules = store?.snapshot()
         authors.forEach { author ->
             rules?.words?.firstOrNull { author.contains(it, ignoreCase = true) }
-                ?.let { repo.blockStore.removeWord(it) }
+                ?.let { store.removeWord(it) }
         }
         _state.update { it.copy(blockedAuthor = false, actionNotice = "已取消屏蔽该作者") }
     }

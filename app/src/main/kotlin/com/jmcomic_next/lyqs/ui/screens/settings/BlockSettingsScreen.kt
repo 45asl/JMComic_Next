@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.settings
 
+import com.jmcomic_next.lyqs.data.prefs.BlockKind
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -62,7 +63,7 @@ fun BlockSettingsScreen(
     val store = repo.blockStore
     val rules by store?.state?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(BlockRules()) }
     val c = JmTheme.colors
-    var dialog by remember { mutableStateOf<BlockStore.Kind?>(null) }
+    var dialog by remember { mutableStateOf<BlockKind?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -110,7 +111,7 @@ fun BlockSettingsScreen(
                     title = "关键词屏蔽",
                     hint = "作品名或作者命中即隐藏 · ${rules.words.size} 条",
                     values = rules.words.toList(),
-                    onAdd = { dialog = BlockStore.Kind.Word },
+                    onAdd = { dialog = BlockKind.Word },
                     onRemove = { store?.removeWord(it) },
                 )
             }
@@ -120,7 +121,7 @@ fun BlockSettingsScreen(
                     title = "分类屏蔽",
                     hint = "整个分类不再出现 · ${rules.categories.size} 条",
                     values = rules.categories.toList(),
-                    onAdd = { dialog = BlockStore.Kind.Category },
+                    onAdd = { dialog = BlockKind.Category },
                     onRemove = { store?.removeCategory(it) },
                 )
             }
@@ -130,7 +131,7 @@ fun BlockSettingsScreen(
                     title = "标签屏蔽",
                     hint = "打开作品时提示 · ${rules.tags.size} 条",
                     values = rules.tags.toList(),
-                    onAdd = { dialog = BlockStore.Kind.Tag },
+                    onAdd = { dialog = BlockKind.Tag },
                     onRemove = { store?.removeTag(it) },
                 )
             }
@@ -151,9 +152,9 @@ fun BlockSettingsScreen(
 
                     else -> {
                         when (kind) {
-                            BlockStore.Kind.Word -> store?.addWord(trimmed)
-                            BlockStore.Kind.Tag -> store?.addTag(trimmed)
-                            BlockStore.Kind.Category -> store?.addCategory(trimmed)
+                            BlockKind.Word -> store?.addWord(trimmed)
+                            BlockKind.Tag -> store?.addTag(trimmed)
+                            BlockKind.Category -> store?.addCategory(trimmed)
                         }
                         "已屏蔽「$trimmed」"
                     }
@@ -239,16 +240,16 @@ private fun BlockSection(
 /** 添加一条：只负责收字，长度与重复校验由调用方处理（那里才知道名单是哪一份）。 */
 @Composable
 private fun AddBlockDialog(
-    kind: BlockStore.Kind,
+    kind: BlockKind,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
     val c = JmTheme.colors
     var text by remember { mutableStateOf("") }
     val label = when (kind) {
-        BlockStore.Kind.Word -> "关键词"
-        BlockStore.Kind.Tag -> "标签"
-        BlockStore.Kind.Category -> "分类名"
+        BlockKind.Word -> "关键词"
+        BlockKind.Tag -> "标签"
+        BlockKind.Category -> "分类名"
     }
 
     AlertDialog(
@@ -263,9 +264,9 @@ private fun AddBlockDialog(
                     placeholder = {
                         Text(
                             text = when (kind) {
-                                BlockStore.Kind.Word -> "例如：NTR"
-                                BlockStore.Kind.Tag -> "例如：纯爱"
-                                BlockStore.Kind.Category -> "例如：同人"
+                                BlockKind.Word -> "例如：NTR"
+                                BlockKind.Tag -> "例如：纯爱"
+                                BlockKind.Category -> "例如：同人"
                             },
                             color = c.textTertiary,
                         )

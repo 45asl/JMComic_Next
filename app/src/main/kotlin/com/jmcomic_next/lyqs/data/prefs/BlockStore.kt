@@ -38,16 +38,15 @@ class BlockStore(context: Context) : BlockStoreApi {
     override fun removeCategory(name: String) = update { it.copy(categories = it.categories - name) }
 
     /** 该条目是否已在名单里（界面用来提示「已屏蔽」而不是重复添加）。 */
-    fun isBlocked(type: Kind, value: String): Boolean {
+    override fun isBlocked(type: BlockKind, value: String): Boolean {
         val rules = _state.value
         return when (type) {
-            Kind.Word -> rules.words.any { it.equals(value, ignoreCase = true) }
-            Kind.Tag -> rules.tags.any { it.equals(value, ignoreCase = true) }
-            Kind.Category -> rules.categories.any { it.equals(value, ignoreCase = true) }
+            BlockKind.Word -> rules.words.any { it.equals(value, ignoreCase = true) }
+            BlockKind.Tag -> rules.tags.any { it.equals(value, ignoreCase = true) }
+            BlockKind.Category -> rules.categories.any { it.equals(value, ignoreCase = true) }
         }
     }
 
-    enum class Kind { Word, Tag, Category }
 
     private fun update(transform: (BlockRules) -> BlockRules) {
         val next = transform(_state.value)

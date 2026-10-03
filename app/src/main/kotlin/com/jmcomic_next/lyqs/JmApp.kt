@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs
 
+import com.jmcomic_next.lyqs.BuildConfig
 import android.app.Application
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -79,7 +80,9 @@ class JmApp : Application(), SingletonImageLoader.Factory {
 
     /** 全局唯一的仓储实例：持有接口主机、请求 Token、图床主机与账号会话。 */
     val repository: JmRepository by lazy {
-        JmRepository.create(authStore = authStore, blockStore = blockStore)
+        JmRepository.create(authStore = authStore, blockStore = blockStore,
+            debug = BuildConfig.DEBUG,
+        )
     }
 
     override fun onCreate() {

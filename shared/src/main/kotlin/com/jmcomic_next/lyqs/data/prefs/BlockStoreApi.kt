@@ -9,8 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
  * 成员按**仓储层与界面的实际用量**定：仓储只读 [snapshot]，
  * 界面要观察 [state] 并增删词/标签/分区。
  *
- * 注意这里暂时**没有** `isBlocked`：它依赖 `Kind`，而 `Kind` 目前是 Android 侧
- * `BlockStore` 的嵌套枚举。等 `Kind` 移到跨平台模块后再补进这个接口。
+ * `isBlocked` 依赖 [BlockKind]，它已从 `BlockStore` 的嵌套枚举提升为顶层类型。
  */
 interface BlockStoreApi {
     val state: StateFlow<BlockRules>
@@ -23,4 +22,7 @@ interface BlockStoreApi {
     fun removeTag(tag: String)
     fun addCategory(name: String)
     fun removeCategory(name: String)
+
+    /** 某条内容是否命中名单（界面用来提示「已经在名单里」）。 */
+    fun isBlocked(type: BlockKind, value: String): Boolean
 }

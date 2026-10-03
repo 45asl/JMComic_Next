@@ -1,6 +1,5 @@
 package com.jmcomic_next.lyqs.data
 
-import com.jmcomic_next.lyqs.BuildConfig
 import com.jmcomic_next.lyqs.data.remote.dto.DailyHistory
 import com.jmcomic_next.lyqs.data.remote.dto.DailyHistoryOptions
 import com.jmcomic_next.lyqs.data.remote.dto.NotificationUnread
@@ -8,7 +7,7 @@ import com.jmcomic_next.lyqs.data.remote.dto.NotificationPage
 import com.jmcomic_next.lyqs.data.remote.dto.DailyCheckResult
 import com.jmcomic_next.lyqs.data.remote.dto.DailyPayload
 import com.jmcomic_next.lyqs.data.crypto.JmCrypto
-import com.jmcomic_next.lyqs.data.prefs.BlockStore
+import com.jmcomic_next.lyqs.data.prefs.BlockStoreApi
 import com.jmcomic_next.lyqs.data.remote.Envelope
 import com.jmcomic_next.lyqs.data.remote.JmException
 import com.jmcomic_next.lyqs.data.remote.JmHostDiscovery
@@ -16,7 +15,7 @@ import com.jmcomic_next.lyqs.data.remote.JmJson
 import com.jmcomic_next.lyqs.data.remote.JmPaths
 import com.jmcomic_next.lyqs.data.remote.JmRemote
 import com.jmcomic_next.lyqs.data.remote.JmSession
-import com.jmcomic_next.lyqs.data.auth.AuthStore
+import com.jmcomic_next.lyqs.data.auth.AuthStoreApi
 import com.jmcomic_next.lyqs.data.remote.dto.ActionResult
 import com.jmcomic_next.lyqs.data.remote.dto.AlbumDetail
 import com.jmcomic_next.lyqs.data.remote.dto.FavoriteListPayload
@@ -90,13 +89,13 @@ data class SearchResult(
 
 class JmRepository(
     private val remote: JmRemote,
-    private val authStore: AuthStore,
+    private val authStore: AuthStoreApi,
     /** 屏蔽名单。由 App 容器注入，与账号存储同样是「本地状态」。 */
-    val blockStore: BlockStore? = null,
+    val blockStore: BlockStoreApi? = null,
 ) {
 
     /** 账号会话状态，供界面读取登录态与会员信息。 */
-    val auth: AuthStore get() = authStore
+    val auth: AuthStoreApi get() = authStore
 
     /** 当前屏蔽规则（无存储时视为空规则）。 */
     private fun rules(): BlockRules = blockStore?.snapshot() ?: BlockRules()
@@ -888,10 +887,12 @@ class JmRepository(
 
         /** 便捷构造，供 App 级容器使用。 */
         fun create(
-            authStore: AuthStore,
+            authStore: AuthStoreApi,
             session: JmSession = JmSession(),
-            blockStore: BlockStore? = null,
-        ): JmRepository = JmRepository(JmRemote(session, authStore, BuildConfig.DEBUG), authStore, blockStore)
+            blockStore: BlockStoreApi? = null,
+            /** 跨平台模块里没有 BuildConfig，由调用方传入自己的调试标记。 */
+            debug: Boolean = false,
+        ): JmRepository = JmRepository(JmRemote(session, authStore, debug), authStore, blockStore)
     }
 }
 
@@ -923,7 +924,7 @@ internal fun JsonElement?.toActionResult(): ActionResult = when (this) {
  * 含「取消」为假，含「追踪/追更」为真，`true`/`1` 为真。
  * 把失败响应当成「已追更」比反过来危险 —— 用户会以为自己早就关注了，于是再也不会去点。
  */
-internal fun String.trackedOrFalse(): Boolean {
+fun String.trackedOrFalse(): Boolean {
     val text = trim().trim('"')
     return when {
         text.isEmpty() -> false
