@@ -106,6 +106,33 @@ android {
         }
     }
 
+    /**
+     * 四个变体的 versionName 分开（1.8.0 用户要求）：
+     *
+     * | 变体 | versionName |
+     * | --- | --- |
+     * | full / release | `1.x.y` |
+     * | full / debug | `1.x.y.debug` |
+     * | lite / release | `1.x.y.lite` |
+     * | lite / debug | `1.x.y.litedebug` |
+     *
+     * 注意 **不能** 用「flavor 的 versionNameSuffix + buildType 的 versionNameSuffix」拼：
+     * AGP 会把两段后缀都接上去，得到 `1.x.y.lite.debug`，而要求是 `1.x.y.litedebug`
+     * —— 一个连写的标记。所以按变体整体设置。
+     */
+    androidComponents {
+        onVariants { variant ->
+            val base = variant.outputs.firstOrNull()?.versionName?.get() ?: return@onVariants
+            val suffix = when {
+                variant.flavorName == "lite" && variant.buildType == "debug" -> ".litedebug"
+                variant.flavorName == "lite" -> ".lite"
+                variant.buildType == "debug" -> ".debug"
+                else -> ""
+            }
+            variant.outputs.forEach { it.versionName.set(base + suffix) }
+        }
+    }
+
     buildTypes {
         release {
             // R8 混淆 + 资源压缩。debug 包未混淆时有 24MB，主要体积来自未被裁剪的
