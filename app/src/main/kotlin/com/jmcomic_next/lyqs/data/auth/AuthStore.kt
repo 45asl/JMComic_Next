@@ -1,6 +1,5 @@
 package com.jmcomic_next.lyqs.data.auth
 
-import android.content.Context
 import com.jmcomic_next.lyqs.data.remote.JmJson
 import com.jmcomic_next.lyqs.data.remote.dto.MemberInfo
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * 服务端拒绝的处理见 [com.jmcomic_next.lyqs.data.JmRepository] 的会话失效回调。
  */
 
-class AuthStore(context: Context, private val secure: SecureStore = SecureStore(context)) : AuthStoreApi {
+class AuthStore(private val secure: SecureStore) : AuthStoreApi {
 
     /**
      * 缓存与锁。

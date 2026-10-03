@@ -40,4 +40,8 @@ class SharedPrefsKeyValueStore(context: Context, name: String) : KeyValueStore {
     override fun remove(key: String) {
         prefs.edit().remove(key).apply()
     }
+
+    override fun clear() {
+        prefs.edit().clear().apply()
+    }
 }

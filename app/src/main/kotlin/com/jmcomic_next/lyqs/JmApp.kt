@@ -1,5 +1,7 @@
 package com.jmcomic_next.lyqs
 
+import com.jmcomic_next.lyqs.data.auth.AndroidKeystoreKeyProvider
+import com.jmcomic_next.lyqs.data.auth.SecureStore
 import com.jmcomic_next.lyqs.data.prefs.SharedPrefsKeyValueStore
 import com.jmcomic_next.lyqs.BuildConfig
 import android.app.Application
@@ -34,7 +36,7 @@ import kotlinx.coroutines.CoroutineScope
 class JmApp : Application(), SingletonImageLoader.Factory {
 
     /** 账号会话：JWT 与会员信息，经 Keystore 加密落盘。 */
-    val authStore: AuthStore by lazy { AuthStore(this) }
+    val authStore: AuthStore by lazy { AuthStore(SecureStore(SharedPrefsKeyValueStore(this, "jm_secure"), AndroidKeystoreKeyProvider())) }
 
     /** 阅读进度（作品 → 上次读到哪一话）。服务端历史只有作品粒度，这一层必须在本地。 */
     val readProgress: ReadProgressStore by lazy { ReadProgressStore(SharedPrefsKeyValueStore(this, "jm_read_progress")) }

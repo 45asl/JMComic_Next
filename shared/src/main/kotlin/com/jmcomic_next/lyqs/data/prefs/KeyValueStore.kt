@@ -26,4 +26,7 @@ interface KeyValueStore {
     fun putLong(key: String, value: Long)
 
     fun remove(key: String)
+
+    /** 清空本存储下的全部键（安全存储的登出清理需要）。 */
+    fun clear()
 }
