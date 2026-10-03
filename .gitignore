@@ -22,3 +22,9 @@ captures/
 keystore.properties
 *.jks
 *.keystore
+
+# 桌面端构建产物（2.0.0）：分发包不进源码仓库 —— 发布时作为 Release 附件，
+# 提交进仓库会让仓库每次构建都膨胀，且 GitHub 对单文件有 50MB 警告线。
+desktop/dist/
+desktop/build/
+shared/build/
