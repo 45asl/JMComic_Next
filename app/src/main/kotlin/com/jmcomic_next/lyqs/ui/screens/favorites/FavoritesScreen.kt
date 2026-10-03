@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.favorites
 
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -484,7 +485,7 @@ fun AccountListScreen(
                                                 onClick = { dialog = FolderDialog.Move(comic.id) },
                                             ) {
                                                 Icon(
-                                                    imageVector = Icons.Filled.DriveFileMove,
+                                                    imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
                                                     contentDescription = "移入收藏夹",
                                                     tint = c.textTertiary,
                                                     modifier = Modifier.size(20.dp),

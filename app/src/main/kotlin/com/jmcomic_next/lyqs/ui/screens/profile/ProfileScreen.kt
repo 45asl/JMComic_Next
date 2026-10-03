@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.profile
 
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.runtime.produceState
@@ -273,7 +274,7 @@ private fun AccountCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Logout,
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
                     contentDescription = null,
                     tint = c.textTertiary,
                     modifier = Modifier.size(16.dp),

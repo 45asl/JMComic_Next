@@ -182,7 +182,7 @@ fun DailyQuickFab(
                         val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH)
                         when {
                             id.isNullOrBlank() -> notice = "现在没有进行中的签到活动"
-                            d != null && Daily.isSignedToday(d.record, today) -> {
+                            Daily.isSignedToday(d.record, today) -> {
                                 // 服务端说今天签过了 —— 那就把状态置为已签，而不是只弹一句提示
                                 signedToday = true
                                 alreadyPrompted += 1

@@ -408,7 +408,7 @@ class DetailViewModel(
         val rules = repo.blockStore?.snapshot()
         authors.forEach { author ->
             rules?.words?.firstOrNull { author.contains(it, ignoreCase = true) }
-                ?.let { repo.blockStore?.removeWord(it) }
+                ?.let { repo.blockStore.removeWord(it) }
         }
         _state.update { it.copy(blockedAuthor = false, actionNotice = "已取消屏蔽该作者") }
     }

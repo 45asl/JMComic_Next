@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.creator
 
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -346,7 +347,7 @@ fun CreatorScreen(
                 }
 
             else -> if (state.works.isEmpty()) {
-                MessageState(title = "没有找到作品", icon = Icons.Filled.MenuBook, onRetry = { vm.load() })
+                MessageState(title = "没有找到作品", icon = Icons.AutoMirrored.Filled.MenuBook, onRetry = { vm.load() })
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = CardSizes.grid),

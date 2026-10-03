@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.creator
 
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -142,7 +143,7 @@ fun CreatorWorkScreen(
 
             info == null -> MessageState(
                 title = "没有这个作品的信息",
-                icon = Icons.Filled.MenuBook,
+                icon = Icons.AutoMirrored.Filled.MenuBook,
                 onRetry = { vm.load() },
             )
 
@@ -193,7 +194,7 @@ fun CreatorWorkScreen(
                         MessageState(
                             title = "这个作品没有可看的内容",
                             description = "作品库里有些条目只有信息，没有图片",
-                            icon = Icons.Filled.MenuBook,
+                            icon = Icons.AutoMirrored.Filled.MenuBook,
                         )
                     }
                 }

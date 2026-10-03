@@ -94,8 +94,11 @@ class FavoriteTags(context: Context) {
             at > 0 && now - at < maxAge
 
         fun decode(raw: String?): FavoriteTagCache =
-            raw?.let { runCatching { Json { ignoreUnknownKeys = true }.decodeFromString(FavoriteTagCache.serializer(), it) }.getOrNull() }
+            raw?.let { runCatching { Format.decodeFromString(FavoriteTagCache.serializer(), it) }.getOrNull() }
                 ?: FavoriteTagCache()
+
+        // Json 实例**建一次**就够：编译器直接点名"每次使用都创建会很慢"
+        private val Format = Json { ignoreUnknownKeys = true }
     }
 }
 

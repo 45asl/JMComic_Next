@@ -207,7 +207,7 @@ class WallpaperStore(context: Context, private val client: OkHttpClient) {
     private suspend fun fetchBing(): List<String> = withContext(Dispatchers.IO) {
         val req = Request.Builder().url(BING_API).header("Accept", "application/json").build()
         client.newCall(req).execute().use { resp ->
-            val body = resp.body?.string().orEmpty()
+            val body = resp.body.string()
             if (!resp.isSuccessful) throw IllegalStateException("Bing 接口 HTTP ${resp.code}")
             val parsed = JmJson.decodeFromString(BingResponse.serializer(), body)
             fetchedCredit = parsed.copyright
@@ -236,7 +236,7 @@ class WallpaperStore(context: Context, private val client: OkHttpClient) {
                     val finalUrl = resp.request.url.toString()
                     if (resp.isSuccessful) {
                         // 读一小段就够判断可用性，不必把整张图拉下来（Coil 之后会自己取）
-                        resp.body?.byteStream()?.read(ByteArray(512))
+                        resp.body.byteStream().read(ByteArray(512))
                         finalUrl
                     } else {
                         throw IllegalStateException("HTTP ${resp.code}")
