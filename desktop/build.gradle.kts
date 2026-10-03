@@ -43,7 +43,10 @@ dependencies {
 // 这样构建桌面版完全不需要 Android SDK，容器里也就能独立编译。
 compose.desktop {
     application {
-        mainClass = "MainKt"
+        // 必须是全限定名：之前这里写的是裸 MainKt，而仓库里同时存在一个默认包的
+        // 旧验证文件（src/main/kotlin/Main.kt），于是启动的永远是那个 hello-world。
+        // 那个文件已删除，这里也改成全限定名，避免同类问题再发生。
+        mainClass = "com.jmcomic_next.desktop.MainKt"
         nativeDistributions {
             targetFormats(
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb,
