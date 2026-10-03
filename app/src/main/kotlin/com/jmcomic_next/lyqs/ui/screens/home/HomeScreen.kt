@@ -144,6 +144,9 @@ fun HomeScreen(
                 DailyQuickFab(
                     repo = repo,
                     bottomInset = LocalBottomBarInset.current,
+                    // 必须显式对齐：Box 里不传 align 就落在左上角
+                    //（上一版就是这么跑到屏幕左上角去的）
+                    modifier = Modifier.align(Alignment.BottomEnd),
                 )
                 RandomFab(
                     repo = repo,
