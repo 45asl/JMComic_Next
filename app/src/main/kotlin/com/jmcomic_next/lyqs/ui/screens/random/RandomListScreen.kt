@@ -1,5 +1,10 @@
 package com.jmcomic_next.lyqs.ui.screens.random
 
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -107,6 +112,23 @@ fun RandomListScreen(
     // 已读到的标签：id -> 标签集合。用 snapshot 的 state map，增量写入不会丢更新
     val knownTags = remember { mutableStateMapOf<String, Set<String>>() }
 
+    // 只给**屏幕上可见**的条目读标签（1.6.0）。
+    // 原来是整批全读：一批二十几条就是二十几个详情请求，而用户可能只看前三行。
+    // 首页那套（TagBlockResolver）本来就是"条目可见才请求"，这里对齐它。
+    val gridState = rememberLazyGridState()
+    val listState = rememberLazyListState()
+    val visibleIds by remember {
+        derivedStateOf {
+            // 两种版式的 layoutInfo 类型不同（网格/列表），所以分开取再合并
+            val ids = if (layout == LAYOUT_GRID) {
+                gridState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? String }
+            } else {
+                listState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? String }
+            }
+            ids.toSet()
+        }
+    }
+
     // 收藏标签统计：缓存在一周内就不重扫（否则每次进这一页都要打几十个详情请求）
     LaunchedEffect(round) {
         val now = System.currentTimeMillis()
@@ -117,20 +139,22 @@ fun RandomListScreen(
         }
     }
 
-    // 逐条读标签：并发上限 3（突发一批请求不该把服务端和自己都压住）
-    LaunchedEffect(items_) {
+    // 逐条读标签：**只读可见的**，并发上限 3（突发一批请求不该把服务端和自己都压住）。
+    // 滚动时可见集合变化会再次触发，于是新滚进来的条目按需补读 —— 总量被"屏幕上最多几十条"封顶。
+    LaunchedEffect(visibleIds) {
+        val todo = visibleIds.filterNot { knownTags.containsKey(it) }
+        if (todo.isEmpty()) return@LaunchedEffect
         val gate = Semaphore(3)
         coroutineScope {
-            items_.map { item ->
+            todo.map { id ->
                 async {
-                    if (knownTags.containsKey(item.id)) return@async
                     val tags = gate.withPermit {
                         withContext(Dispatchers.IO) {
-                            runCatching { repo.album(item.id).tags.toSet() }.getOrNull()
+                            runCatching { repo.album(id).tags.toSet() }.getOrNull()
                         }
                     }
                     // 只写自己这一条，不整体替换 —— 整体替换会让先到的结果被后到的覆盖
-                    if (tags != null) knownTags[item.id] = tags
+                    if (tags != null) knownTags[id] = tags
                 }
             }.awaitAll()
         }
@@ -190,6 +214,7 @@ fun RandomListScreen(
             items_.isEmpty() -> Hint("这次没抽到（可能候选都被屏蔽名单挡住了，或网络不通）。")
             layout == LAYOUT_GRID -> LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
+                state = gridState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = Spacing.lg, end = Spacing.lg,
@@ -224,6 +249,7 @@ fun RandomListScreen(
                 }
             }
             else -> LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = Spacing.lg, end = Spacing.lg, top = Spacing.sm,
