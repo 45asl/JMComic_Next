@@ -528,6 +528,12 @@ fun SearchScreen(
                     vm.search()
                 },
                 onClearHistory = { vm.clearHistory() },
+                onShuffle = { vm.shuffleRecommend() },
+                onRandomOne = {
+                    // 封面与标题这里没有，交给详情页自己拉 —— 传空串即可，
+                    // 代价是这一次没有共享元素动画（跳转仍然完整可用）
+                    vm.openRandomOne { id -> onOpenComic(ComicTarget(id, "", "")) }
+                },
             )
 
             state.results.isEmpty() -> MessageState(
@@ -667,6 +673,10 @@ private fun SuggestionPanel(
     onOpenComic: (ComicTarget) -> Unit,
     onPick: (String) -> Unit,
     onClearHistory: () -> Unit,
+    /** 换一批随机推荐（1.5.5）。 */
+    onShuffle: () -> Unit,
+    /** 随手抽一本：直接进那本的详情页（1.5.5）。 */
+    onRandomOne: () -> Unit,
 ) {
     val c = JmTheme.colors
     Column(
@@ -710,11 +720,17 @@ private fun SuggestionPanel(
         // 一屏里也能顺手滑到，所以不妨碍常规路径。
         if (recommend.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Text(
-                    text = "随机推荐",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = c.text,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "随机推荐",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = c.text,
+                        modifier = Modifier.weight(1f),
+                    )
+                    // 「随便来一本」是这一行真正想要的用法：不用挑，直接看
+                    TextButton(onClick = onRandomOne) { Text("随便来一本") }
+                    TextButton(onClick = onShuffle) { Text("换一批") }
+                }
                 // 标签屏蔽（1.5.1）：命中集合是异步补上来的（没有标签规则时恒为空）
                 val tagBlocker = LocalTagBlocker.current
                 val hiddenIds by remember(tagBlocker) {
