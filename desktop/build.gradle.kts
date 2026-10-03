@@ -57,3 +57,17 @@ compose.desktop {
         }
     }
 }
+
+/**
+ * 连通性冒烟：登录并拉一次首页列表。
+ *
+ * 单独做一个 JavaExec 而不是复用 compose 的 run 任务：它没有界面，
+ * 因此能在无显示环境（容器里）直接跑，这是"数据层在真实网络下能跑通"的最短验证路径。
+ * 凭据从环境变量读，不经过命令行参数。
+ */
+tasks.register<JavaExec>("smoke") {
+    group = "verification"
+    description = "桌面端连通性冒烟（无界面）：JM_USER/JM_PASS gradle smoke"
+    mainClass.set("com.jmcomic_next.desktop.SmokeKt")
+    classpath = sourceSets["main"].runtimeClasspath
+}
