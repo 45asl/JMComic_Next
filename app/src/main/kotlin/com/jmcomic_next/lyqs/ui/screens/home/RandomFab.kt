@@ -116,7 +116,7 @@ fun RandomFab(
         ) {
             Icon(
                 imageVector = Icons.Filled.Casino,
-                contentDescription = "随机一本（长按推荐一批）",
+                contentDescription = "随机一本（长按推荐一批）；已排除屏蔽名单",
                 tint = c.accent,
                 modifier = Modifier.padding(14.dp),
             )
@@ -148,6 +148,13 @@ fun RandomFab(
                         text = "随机推荐 ${list.size} 本",
                         style = MaterialTheme.typography.titleSmall,
                         color = c.text,
+                    )
+                    // 明确标注"已排除屏蔽名单"：用户看到的本子少了，应该知道原因，
+                    // 而不是怀疑随机是不是坏了或者屏蔽没生效
+                    Text(
+                        text = "已排除你屏蔽名单里的作品",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = c.textTertiary,
                     )
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
