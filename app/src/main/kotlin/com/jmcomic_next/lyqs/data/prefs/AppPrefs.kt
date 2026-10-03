@@ -104,6 +104,11 @@ class AppPrefs(context: Context) {
         get() = sp.getString(KEY_RANDOM_LAYOUT, "grid") ?: "grid"
         set(value) = sp.edit { putString(KEY_RANDOM_LAYOUT, value) }
 
+    /** 收藏标签统计的缓存（1.5.6）：JSON，含统计时间与标签计数。 */
+    var favoriteTagsJson: String?
+        get() = sp.getString(KEY_FAVORITE_TAGS, null)
+        set(value) = sp.edit { putString(KEY_FAVORITE_TAGS, value) }
+
     /** 动效性格：标准 / Plasma。 */
     var motionStyle: MotionStyle
         get() = MotionStyle.fromName(sp.getString(KEY_MOTION_STYLE, null))
@@ -179,6 +184,7 @@ class AppPrefs(context: Context) {
         const val KEY_ULTRA_TRANSLUCENT = "ultra_translucent"
         const val KEY_PREDICTIVE_BACK = "predictive_back"
         const val KEY_MOTION_STYLE = "motion_style"
+        const val KEY_FAVORITE_TAGS = "favorite_tags_v1"
         const val KEY_RANDOM_LAYOUT = "random_layout"
         const val KEY_SERIAL_NOTIFY = "serial_notify"
         const val KEY_SERIAL_NOTIFY_SEEN = "serial_notify_seen"

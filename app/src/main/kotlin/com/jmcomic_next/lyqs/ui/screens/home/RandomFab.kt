@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.home
 
+import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.data.Daily
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.setValue
@@ -133,6 +134,15 @@ fun DailyQuickFab(
     val loggedIn = repo.auth.isLoggedIn
     var signedToday by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
+    /**
+     * 服务端说"已经签过了"的次数。
+     *
+     * 这只是**兜底**：正常情况下收到一次"已签到"就应该把状态置为已签（见下面的处理），
+     * 于是不会再有第二次。真到了这个上限说明状态出了问题，那时宁可禁用按钮，
+     * 也不要让用户一遍遍点、一遍遍看到同一句提示。
+     */
+    var alreadyPrompted by remember { mutableStateOf(0) }
+    val disabled = signedToday || alreadyPrompted >= MAX_ALREADY_PROMPTS
 
     // 进首页时问一次服务端"今天签过没有"：本地不记这个状态，换设备/重装都不会错
     LaunchedEffect(loggedIn) {
@@ -162,30 +172,40 @@ fun DailyQuickFab(
             // 这样它和旁边那颗强调色的骰子不会糊成一片
             tinted = true,
             shape = RoundedCornerShape(percent = 50),
-            modifier = Modifier.size(52.dp).combinedClickable(onClick = {
-                scope.launch {
-                    val uid = repo.auth.member?.uid.orEmpty()
-                    val d = runCatching { repo.daily(uid) }.getOrNull()
-                    val id = d?.dailyId
-                    when {
-                        id.isNullOrBlank() -> notice = "现在没有进行中的签到活动"
-                        d != null && Daily.isSignedToday(
-                            d.record,
-                            java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH),
-                        ) -> {
-                            signedToday = true
-                            notice = "今天已经签过了"
-                        }
-                        else -> runCatching { repo.dailyCheck(uid, id) }.fold(
-                            onSuccess = { res ->
+            modifier = Modifier.size(52.dp).combinedClickable(
+                enabled = !disabled,
+                onClick = {
+                    scope.launch {
+                        val uid = repo.auth.member?.uid.orEmpty()
+                        val d = runCatching { repo.daily(uid) }.getOrNull()
+                        val id = d?.dailyId
+                        val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH)
+                        when {
+                            id.isNullOrBlank() -> notice = "现在没有进行中的签到活动"
+                            d != null && Daily.isSignedToday(d.record, today) -> {
+                                // 服务端说今天签过了 —— 那就把状态置为已签，而不是只弹一句提示
                                 signedToday = true
-                                notice = res.msg?.takeIf { it.isNotBlank() } ?: "签到成功"
-                            },
-                            onFailure = { notice = "签到失败，稍后再试" },
-                        )
+                                alreadyPrompted += 1
+                                notice = "今天已经签过了"
+                            }
+                            else -> runCatching { repo.dailyCheck(uid, id) }.fold(
+                                onSuccess = { res ->
+                                    signedToday = true
+                                    notice = res.msg?.takeIf { it.isNotBlank() } ?: "签到成功"
+                                },
+                                onFailure = {
+                                    if (Daily.isAlreadyChecked(it.message)) {
+                                        // 服务端在 msg 里说"已经签过了" → 同样是状态问题，置为已签
+                                        signedToday = true
+                                        alreadyPrompted += 1
+                                    }
+                                    notice = it.message?.takeIf { m -> m.isNotBlank() } ?: "签到失败，稍后再试"
+                                },
+                            )
+                        }
                     }
-                }
-            }),
+                },
+            ),
         ) {
             Icon(
                 imageVector = if (signedToday) Icons.Filled.Check else Icons.Filled.CalendarMonth,
@@ -195,14 +215,27 @@ fun DailyQuickFab(
             )
         }
     }
-    // 提示单独一层：offset 只影响绘制位置，不会把上面那个 Box 撑高
+    // 提示单独一层：offset 只影响绘制位置，不会把上面那个 Box 撑高。
+    // 而且它得**有实体**（玻璃胶囊）而不是一行小字 —— 一行小字在壁纸上根本看不清，
+    // 提示等于没给（这是用户直接反馈的）。
     notice?.let {
-        Text(
-            text = it,
-            style = MaterialTheme.typography.labelSmall,
-            color = c.textSecondary,
-            modifier = modifier
-                .padding(end = Spacing.lg, bottom = bottomInset + Spacing.md + 52.dp + Spacing.sm + 56.dp),
-        )
+        GlassSurface(
+            level = GlassLevel.Card,
+            shape = RoundedCornerShape(Radius.pill),
+            modifier = modifier.padding(
+                end = Spacing.lg,
+                bottom = bottomInset + Spacing.md + 52.dp + Spacing.sm + 60.dp,
+            ),
+        ) {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelMedium,
+                color = c.text,
+                modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs),
+            )
+        }
     }
 }
+
+/** 服务端连续说"已经签过了"到这个次数就禁用按钮（兜底，正常情况下不该触发）。 */
+private const val MAX_ALREADY_PROMPTS = 5

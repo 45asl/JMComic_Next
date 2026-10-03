@@ -1154,6 +1154,12 @@ private fun DailyCard(onLogin: () -> Unit) {
             else -> {
                 val d = daily!!
                 val complete = Daily.isComplete(d.record)
+                // 今天签没签以服务端为准（日历里今天那格 signed）—— 用户点完签到，
+                // 这里必须立刻显示「今天已签到」，而不是还摆着一个可点的按钮
+                val signedToday = Daily.isSignedToday(
+                    d.record,
+                    java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH),
+                )
                 Text(
                     text = d.eventName ?: "签到活动",
                     style = MaterialTheme.typography.titleSmall,
@@ -1204,7 +1210,7 @@ private fun DailyCard(onLogin: () -> Unit) {
                 ) {
                     Button(
                         // 已经签完就禁用；没有 daily_id 时也禁用（服务端没给可打卡的活动）
-                        enabled = !complete && !d.dailyId.isNullOrBlank(),
+                        enabled = !complete && !signedToday && !d.dailyId.isNullOrBlank(),
                         onClick = {
                             val id = d.dailyId ?: return@Button
                             scope.launch {
@@ -1223,7 +1229,15 @@ private fun DailyCard(onLogin: () -> Unit) {
                                     )
                             }
                         },
-                    ) { Text(if (complete) "本期已签完" else "签到") }
+                    ) {
+                        Text(
+                            when {
+                                signedToday -> "今天已签到"
+                                complete -> "本期已签完"
+                                else -> "签到"
+                            },
+                        )
+                    }
 
                     DailyHistorySection(repo = repo, uid = uid)
 
