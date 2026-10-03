@@ -214,10 +214,13 @@ private fun HomeContent(
     // 这条规则有意为之的，非重复作品的"列表 → 详情"完全不受影响。
     val tagBlocker = LocalTagBlocker.current
     // 标签屏蔽（1.5.1）：列表接口不返回标签，命中集合是**异步**补上来的。
-    // 没有解析器（或没有标签规则）时这里恒为空集合，列表照常显示。
-    val hiddenIds by remember(tagBlocker) {
+    //
+    // 这里**只保留 StateFlow、不收集**（1.6.0）。原来在函数体里收集，于是后台每扫出一条结果
+    // 都会重组**整个首页**（所有分区 + 最新列表），而它其实只被下面某一行用到。
+    // 收集下沉到那一行里，重组范围就只剩那一行。
+    val hiddenFlow = remember(tagBlocker) {
         tagBlocker?.hidden ?: MutableStateFlow(emptySet<String>())
-    }.collectAsStateWithLifecycle()
+    }
 
     val duplicatedComicIds = remember(sections) {
         sections.asSequence()
@@ -247,6 +250,8 @@ private fun HomeContent(
                 )
             }
             item(key = "sec-${section.id}-row") {
+                // 只在这一行里收集：后台扫标签的结果变化时，重组范围是这一行而不是整页
+                val hiddenIds by hiddenFlow.collectAsStateWithLifecycle()
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = Spacing.lg),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.md),
