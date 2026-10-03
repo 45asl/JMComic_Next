@@ -95,6 +95,15 @@ class AppPrefs(context: Context) {
         get() = sp.getInt(KEY_SERIAL_NOTIFY_SEEN, 0)
         set(value) = sp.edit { putInt(KEY_SERIAL_NOTIFY_SEEN, value) }
 
+    /**
+     * 随机推荐页的版式（1.5.6）：网格 / 封面加详情的列表。
+     *
+     * 存成字符串而不是序号：以后加版式时旧值仍然可读，不会因为序号移位而错乱。
+     */
+    var randomLayout: String
+        get() = sp.getString(KEY_RANDOM_LAYOUT, "grid") ?: "grid"
+        set(value) = sp.edit { putString(KEY_RANDOM_LAYOUT, value) }
+
     /** 动效性格：标准 / Plasma。 */
     var motionStyle: MotionStyle
         get() = MotionStyle.fromName(sp.getString(KEY_MOTION_STYLE, null))
@@ -170,6 +179,7 @@ class AppPrefs(context: Context) {
         const val KEY_ULTRA_TRANSLUCENT = "ultra_translucent"
         const val KEY_PREDICTIVE_BACK = "predictive_back"
         const val KEY_MOTION_STYLE = "motion_style"
+        const val KEY_RANDOM_LAYOUT = "random_layout"
         const val KEY_SERIAL_NOTIFY = "serial_notify"
         const val KEY_SERIAL_NOTIFY_SEEN = "serial_notify_seen"
         const val KEY_READER_MODE = "reader_mode"

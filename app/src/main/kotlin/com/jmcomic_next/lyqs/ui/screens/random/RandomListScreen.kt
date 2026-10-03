@@ -5,16 +5,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -29,25 +36,36 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.jmcomic_next.lyqs.data.prefs.AppPrefs
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
 import com.jmcomic_next.lyqs.ui.ComicTarget
-import com.jmcomic_next.lyqs.ui.LocalRepository
 import com.jmcomic_next.lyqs.ui.LocalBottomBarInset
+import com.jmcomic_next.lyqs.ui.LocalRepository
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
 import com.jmcomic_next.lyqs.ui.theme.JmTheme
 import com.jmcomic_next.lyqs.ui.theme.Radius
 import com.jmcomic_next.lyqs.ui.theme.Spacing
 
+/** 随机页的两种版式（1.5.6）。 */
+private const val LAYOUT_GRID = "grid"
+private const val LAYOUT_LIST = "list"
+
 /**
  * 随机推荐**一批**（1.5.6）。
  *
- * 长按首页那颗骰子会到这里 —— 按用户的要求用**跳转成一个列表**，
- * 而不是弹一层对话框：列表可以滚、可以换一批、看中了再点进去，
- * 也不会把首页压在底下。
+ * 长按首页那颗骰子会到这里 —— 按用户的要求用**跳转成一个列表**，而不是弹一层对话框。
  *
- * 数据来自 `randomRecommend()`，它**已经应用标签屏蔽规则**，所以被屏蔽的本子不会出现在这里；
- * 这一点在页面上**明确写出来**，否则用户看到数量变少会怀疑随机坏了。
+ * 两种版式（用户可切换，选择记在 prefs 里）：
+ * - **网格**：只看封面，一屏看最多。
+ * - **列表（封面 + 详情）**：多看一行作者与分类，适合慢慢挑。
+ *
+ * 封面 URL 一律走 `JmRepository.coverUrl()` —— 列表项里的 `image` 是**相对路径**，
+ * 直接当 URL 用会加载不出来（这正是用户报的那个 bug）。
+ *
+ * 数据来自 `randomRecommend()`，它**已经应用标签屏蔽规则**；这一点在页面上明确写出来。
  */
 @Composable
 fun RandomListScreen(
@@ -56,11 +74,13 @@ fun RandomListScreen(
     modifier: Modifier = Modifier,
 ) {
     val c = JmTheme.colors
+    val context = LocalContext.current
     val repo = LocalRepository.current
+    val prefs = remember(context) { AppPrefs(context) }
+    var layout by remember { mutableStateOf(prefs.randomLayout) }
     var items_ by remember { mutableStateOf<List<ListItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
-    // 换一批：改这个值触发重新拉取
     var round by remember { mutableStateOf(0) }
 
     LaunchedEffect(round) {
@@ -82,6 +102,17 @@ fun RandomListScreen(
                 }
             },
             actions = {
+                // 版式切换：图标显示"切过去会变成什么"，而不是当前是什么
+                IconButton(onClick = {
+                    layout = if (layout == LAYOUT_GRID) LAYOUT_LIST else LAYOUT_GRID
+                    prefs.randomLayout = layout
+                }) {
+                    if (layout == LAYOUT_GRID) {
+                        Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = "切换成列表", tint = c.accent)
+                    } else {
+                        Icon(Icons.Filled.GridView, contentDescription = "切换成网格", tint = c.accent)
+                    }
+                }
                 TextButton(onClick = { round += 1 }) { Text("换一批") }
             },
         )
@@ -89,7 +120,7 @@ fun RandomListScreen(
             loading -> Hint("正在随机…")
             error != null -> Hint("没拿到：$error")
             items_.isEmpty() -> Hint("这次没抽到（可能候选都被屏蔽名单挡住了，或网络不通）。")
-            else -> LazyVerticalGrid(
+            layout == LAYOUT_GRID -> LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
@@ -101,15 +132,11 @@ fun RandomListScreen(
             ) {
                 items(items_, key = { it.id }) { comic ->
                     Column(
-                        modifier = Modifier.clickable {
-                            onOpenComic(
-                                ComicTarget(comic.id, comic.image.orEmpty(), comic.name.orEmpty()),
-                            )
-                        },
+                        modifier = Modifier.clickable { onOpenComic(target(repo, comic)) },
                         verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
                     ) {
                         AsyncImage(
-                            model = comic.image.orEmpty(),
+                            model = repo.coverUrl(comic),
                             contentDescription = comic.name,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -125,9 +152,56 @@ fun RandomListScreen(
                     }
                 }
             }
+            else -> LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = Spacing.lg, end = Spacing.lg, top = Spacing.sm,
+                    bottom = LocalBottomBarInset.current + Spacing.lg,
+                ),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                items(items_, key = { it.id }) { comic ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenComic(target(repo, comic)) },
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                    ) {
+                        AsyncImage(
+                            model = repo.coverUrl(comic),
+                            contentDescription = comic.name,
+                            modifier = Modifier
+                                .width(82.dp)
+                                .height(114.dp)
+                                .clip(RoundedCornerShape(Radius.sm)),
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
+                        ) {
+                            Text(
+                                text = comic.name.orEmpty(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = c.text,
+                                maxLines = 2,
+                            )
+                            comic.author?.takeIf { it.isNotBlank() }?.let {
+                                Text(text = it, style = MaterialTheme.typography.labelSmall, color = c.textSecondary)
+                            }
+                            comic.category?.title?.takeIf { it.isNotBlank() }?.let {
+                                Text(text = it, style = MaterialTheme.typography.labelSmall, color = c.textTertiary)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
+
+/** 详情页要的封面同样是完整 URL，所以这里也走 `coverUrl()`。 */
+private fun target(repo: com.jmcomic_next.lyqs.data.JmRepository, comic: ListItem): ComicTarget =
+    ComicTarget(comic.id, repo.coverUrl(comic), comic.name.orEmpty())
 
 @Composable
 private fun Hint(text: String) {

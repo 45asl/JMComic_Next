@@ -75,8 +75,10 @@ fun RandomFab(
                             val one = runCatching { repo.bootstrap(); repo.randomRecommend() }
                                 .getOrDefault(emptyList()).randomOrNull()
                             if (one != null) {
+                                // 封面必须走 repo.coverUrl()：列表里的 image 是相对路径，
+                                // 直接当 URL 用会加载不出来（随机页那一版就是这么错的）
                                 onOpenComic(
-                                    ComicTarget(one.id, one.image.orEmpty(), one.name.orEmpty()),
+                                    ComicTarget(one.id, repo.coverUrl(one), one.name.orEmpty()),
                                 )
                             }
                         }
