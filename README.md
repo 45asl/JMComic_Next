@@ -396,7 +396,23 @@ Token:      md5(<时间戳> + "185Hcomic3PAPP7R")
 
 ## 许可
 
-本项目采用 **MIT**，见 [LICENSE](LICENSE)。仅用于学习与个人使用；不提供任何担保。
+本项目采用 **GNU Affero General Public License v3.0 only（AGPL-3.0-only）**，全文见 [LICENSE](LICENSE)。
+
+Copyright (C) 2026 luyaoqisen
+
+本程序是自由软件：你可以再分发它、也可以修改它，但**仅限 AGPL 第 3 版**
+（"version 3 of the License" —— 注意这里**没有** "or any later version"，
+即不授权你按将来的第 4 版使用）。分发（含以网络服务形式提供）时请履行 AGPL 的源码提供义务。
+不提供任何担保，仅用于学习与个人使用。
+
+### 为什么从 MIT 改成 AGPL，以及改不了的部分
+
+1.4.2 及更早的版本是 **MIT**。**已经发布出去的版本收不回来** —— 那些代码任何人都可以
+永久按 MIT 拿走、闭源使用，这一点无法追认；AGPL 只对**本版本起**的代码生效。
+选择 AGPL 是因为它与本站系（博客源码同为 AGPL-3.0）一致，也避免被直接闭源套壳。
+
+依赖全部是宽松协议（AndroidX / Retrofit / OkHttp / Coil / kotlinx 均为 Apache-2.0），
+并入 AGPL 工程没有兼容问题。
 
 ### 与 haka_comic（GPL-3.0）的关系
 
@@ -407,8 +423,9 @@ Token:      md5(<时间戳> + "185Hcomic3PAPP7R")
   本项目是 Kotlin / Jetpack Compose（SharedPreferences + StateFlow）。
   参考的是**功能行为**（三类规则、命中即隐藏、2~20 字符校验、详情页快捷屏蔽），
   不是实现。著作权法保护的是表达，不是功能。
-- **如果将来真的引入了它的代码**（哪怕是一小段），本项目就必须整体改为 GPL-3.0 并保留其版权声明 ——
-  GPL-3.0 的传染性不会因为「只用了一点点」而消失。要引之前请先改 `LICENSE`，不要先合并再补。
+- 本项目**现在是 AGPL-3.0**，而 AGPL-3.0 第 13 条**明确允许**与 GPL-3.0 的代码链接或合并成一个作品，
+  合并后的作品按 AGPL-3.0 分发。所以引入它的代码在许可上是可行的 —— 但**必须保留其版权声明**，
+  并且因为 AGPL 的义务更重，合并前请先确认你能履行源码提供义务。
 - 本项目**不分发** haka_comic 的任何二进制或资源，因此也没有 GPL-3.0 的源码提供义务。
 
 ## 致谢与署名
@@ -416,9 +433,8 @@ Token:      md5(<时间戳> + "185Hcomic3PAPP7R")
 - **设计与视觉系统**来自站主的博客 [moyingyilang.github.io](https://moyingyilang.github.io)
   （令牌移植自其 `src/styles/global.css`，壁纸来源沿用其 `src/config/wallpapers.ts` 的接口地址）；
   官方客户端与反编译还原的源码只用于协议分析，本仓库不含其任何代码。
-  博客源码仓库是 **AGPL-3.0**，而本站与本站主的应用同属一个著作权人，令牌数值与接口地址的沿用
-  不影响本项目的 MIT 授权；但从它那里**搬运代码**就是另一回事了 —— 那会让本项目必须整体改为
-  AGPL-3.0，见〈[许可](#许可)〉。
+  博客源码仓库是 **AGPL-3.0**，本站与本站主的应用同属一个著作权人；本项目自 1.5.0 起同样是
+  AGPL-3.0-only，所以令牌数值、接口地址乃至日后搬运代码都不再有许可冲突，见〈[许可](#许可)〉。
 - **内容屏蔽功能的参考实现**：[raoxwup/haka_comic](https://github.com/raoxwup/haka_comic)
   （Flutter，GPL-3.0）。感谢作者把「标签 / 关键词 / 分类黑名单」这套做法做出来并开源；
   本项目按〈[与 haka_comic（GPL-3.0）的关系](#与-haka_comicgpl-30的关系)〉说明的边界，
@@ -426,3 +442,34 @@ Token:      md5(<时间戳> + "185Hcomic3PAPP7R")
 - **协议逆向的结论、Kotlin 重写与本文档**，由 *DeepSeek Harness* 上的编码 agent
   （模型 `deepseek-v4-flash`）在站主的指导与授权下完成与维护。
   过程记录（修过什么、为什么、哪些坑别再踩）在 [`docs/engineering-notes.md`](docs/engineering-notes.md)。
+
+### 第三方组件（作者 · 协议）
+
+本项目的功能建立在下面这些开源项目上。把**版权方**与**协议**列全，既是许可要求，
+也是让「这项目站在谁的肩上」可核查。除 JUnit 外全部为 Apache-2.0，与 AGPL-3.0 兼容。
+
+| 组件 | 作者 / 版权方 | 协议 |
+| --- | --- | --- |
+| AndroidX：`core-ktx` · `activity-compose` · `lifecycle-*` · `navigation-compose` | The Android Open Source Project（Google） | Apache-2.0 |
+| Jetpack Compose：`compose-ui` · `ui-graphics` · `material3` · `material-icons-extended`（BOM 2026.09.00） | The Android Open Source Project（Google） | Apache-2.0 |
+| Material Components for Android（`com.google.android.material`） | Google | Apache-2.0 |
+| Kotlin 与 kotlinx：`kotlinx-coroutines-android` · `kotlinx-serialization-json` | JetBrains s.r.o. | Apache-2.0 |
+| Retrofit 3（含 `converter-kotlinx-serialization`） | Square, Inc. | Apache-2.0 |
+| OkHttp 5（含 `logging-interceptor`） | Square, Inc. | Apache-2.0 |
+| Coil 3：`coil-compose` · `coil-network-okhttp` | Coil Contributors（Colin White 等） | Apache-2.0 |
+| Android Gradle Plugin | The Android Open Source Project（Google） | Apache-2.0 |
+| JUnit 4（**仅测试**） | JUnit 团队（Kent Beck、Erich Gamma 等） | EPL-1.0 |
+
+### 参考过设计的项目（未使用其代码）
+
+| 项目 | 作者 | 协议 | 参考了什么 |
+| --- | --- | --- | --- |
+| [tiann/KernelSU](https://github.com/tiann/KernelSU) | tiann 与贡献者 | **GPL-3.0** | 四栏切换的 pager 几何（整屏位移、进出同一条时间线）、悬浮胶囊的拖拽与松手吸附、弹簧参数、指示块连续染色的做法 |
+| [raoxwup/haka_comic](https://github.com/raoxwup/haka_comic) | raoxwup | **GPL-3.0** | 内容屏蔽的三类规则（标签 / 关键词 / 分类）与「命中即隐藏」的行为设计 |
+| [moyingyilang.github.io](https://github.com/moyingyilang/moyingyilang.github.io) | moyingyilang（本站主） | **AGPL-3.0** | 设计令牌的数值（配色 / 圆角 / 间距 / 动效时长与曲线）、壁纸接口地址 |
+
+参考的是**功能行为与数值**，不是实现代码；边界见
+〈[与 haka_comic（GPL-3.0）的关系](#与-haka_comicgpl-30的关系)〉。
+本项目自 1.5.0 起为 **AGPL-3.0-only**，与上述 GPL-3.0 / AGPL-3.0 项目在许可上不再有冲突
+（AGPL-3.0 第 13 条本就允许与 GPL-3.0 的作品合并）。
+

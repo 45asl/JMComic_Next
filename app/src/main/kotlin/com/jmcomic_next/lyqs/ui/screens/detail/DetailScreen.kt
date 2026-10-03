@@ -61,7 +61,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import coil3.compose.AsyncImage
+import com.jmcomic_next.lyqs.ui.ComicTarget
 import com.jmcomic_next.lyqs.ui.jmSharedElement
+import com.jmcomic_next.lyqs.ui.jmVanishWhenLeaving
 import com.jmcomic_next.lyqs.ui.jmComicSharedKey
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.trackedOrFalse
@@ -522,12 +524,22 @@ class DetailViewModel(
 fun DetailScreen(
     comicId: String,
     onBack: () -> Unit,
-    onOpenComic: (String) -> Unit,
+    onOpenComic: (ComicTarget) -> Unit,
     onReadChapter: (String) -> Unit,
     onOpenTag: (String) -> Unit,
     onNeedLogin: (String) -> Unit,
     onOpenComments: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * 列表侧一起带过来的封面地址。
+     *
+     * 它是**共享元素的目标矩形**：详情页的封面以前要等 `album` 返回之后才存在，
+     * 动画开始时找不到"触发后的位置"，只走了前半段。有了它，第一帧就能把封面
+     * 画在最终位置上（见 [DetailHeader]）。
+     */
+    initialCoverUrl: String = "",
+    /** 列表侧一起带过来的标题：加载中先用它，顶栏不会先显示"作品详情"再跳一下。 */
+    initialTitle: String = "",
 ) {
     val repo = LocalRepository.current
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -589,9 +601,12 @@ fun DetailScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    // 退出（返回列表）时本页内容**直接消失**：只有封面在动，标题/作者/标签/章节/按钮
+    // 不跟着淡出、更不跟着缩小。见 jmVanishWhenLeaving 里的实测说明。
+    Column(modifier = modifier.fillMaxSize().jmVanishWhenLeaving()) {
         GlassTopBar(
-            title = state.detail?.name ?: "作品详情",
+            title = state.detail?.name?.takeIf { it.isNotBlank() }
+                ?: initialTitle.ifBlank { "作品详情" },
             navigation = {
                 IconButton(onClick = onBack) {
                     Icon(
@@ -653,34 +668,34 @@ fun DetailScreen(
             }
         }
 
-        when {
-            state.loading && state.detail == null -> LoadingBox()
-
-            state.error != null && state.detail == null ->
-                ErrorBox(message = state.error.orEmpty(), onRetry = { vm.load() })
-
-            state.detail != null -> DetailContent(
-                detail = state.detail!!,
-                repo = repo,
-                readEntry = state.readEntry,
-                onLike = { vm.like(onNeedLogin) },
-                onOpenComic = onOpenComic,
-                onReadChapter = onReadChapter,
-                onOpenTag = onOpenTag,
-                onOpenComments = onOpenComments,
-                onDownload = { vm.requestDownload(onNeedLogin, onDownloadReady) },
-                onOpenTagPicker = { vm.setTagPicker(true) },
-                blockedTags = state.blockedTags,
-                blockedAuthor = state.blockedAuthor,
-                onBlockTag = { vm.blockTag(it) },
-                onBlockAuthor = { vm.blockAuthor(it) },
-                onUnblockTag = { vm.unblockTag(it) },
-            )
-
-            // 兜底：加载结束却没有内容也没有错误（例如异常没有 message）时，
-            // 之前这里什么都不渲染，用户面对的是一张只有顶栏的白屏，且没有重试入口
-            else -> ErrorBox(message = "没能加载出这部作品", onRetry = { vm.load() })
-        }
+        // 加载态与完成态走的是**同一个 DetailContent**，只有头部以下的 item 不同。
+        //
+        // 以前这里是 when 的两个分支、两种布局，封面节点会随分支切换被销毁重建，
+        // 共享元素动画到那一刻就断了。现在头部由 [DetailHeader] 在同一个 item 里画，
+        // 数据到达只是文字变了。
+        DetailContent(
+            detailOrNull = state.detail,
+            repo = repo,
+            comicId = comicId,
+            initialCoverUrl = initialCoverUrl,
+            initialTitle = initialTitle,
+            loading = state.loading && state.detail == null,
+            error = state.error,
+            onRetry = { vm.load() },
+            readEntry = state.readEntry,
+            onLike = { vm.like(onNeedLogin) },
+            onOpenComic = onOpenComic,
+            onReadChapter = onReadChapter,
+            onOpenTag = onOpenTag,
+            onOpenComments = onOpenComments,
+            onDownload = { vm.requestDownload(onNeedLogin, onDownloadReady) },
+            onOpenTagPicker = { vm.setTagPicker(true) },
+            blockedTags = state.blockedTags,
+            blockedAuthor = state.blockedAuthor,
+            onBlockTag = { vm.blockTag(it) },
+            onBlockAuthor = { vm.blockAuthor(it) },
+            onUnblockTag = { vm.unblockTag(it) },
+        )
     }
 
     if (state.tagPickerVisible) {
@@ -703,12 +718,135 @@ fun DetailScreen(
     }
 }
 
+/**
+ * 详情页的头部：封面 + 右侧标题那一行。
+ *
+ * 加载态与完成态**共用这一个** composable —— 封面尺寸（120dp / 3:4）、内边距、
+ * 行内间距只在这里写一次，两态之间只有文字内容不同。这正是共享元素需要的：
+ * 「触发后的位置」必须在第一帧就存在（见 [jmSharedElement]）；以前封面是等
+ * `album` 返回之后才出现的，动画开始时找不到目标矩形，用户只看到前半段。
+ *
+ * 右侧那一列是 `weight(1f)`，它内容的多少**不影响封面的矩形** ——
+ * 所以作者 / 页数 / 点赞 / 更新时间在加载态缺省是安全的，不会把封面挤走。
+ */
+@Composable
+private fun DetailHeader(
+    comicId: String,
+    coverUrl: String,
+    title: String,
+    author: String,
+    pageInfo: String,
+    liked: Boolean,
+    likes: Int,
+    addTime: String?,
+    blockedAuthor: Boolean,
+    /** 为空表示还没有数据：不显示点赞按钮（它要联网，加载态画出来也点不了）。 */
+    onLike: (() -> Unit)?,
+    onBlockAuthor: (() -> Unit)?,
+) {
+    val c = JmTheme.colors
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        AsyncImage(
+            model = coverUrl,
+            contentDescription = title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .width(120.dp)
+                .aspectRatio(3f / 4f)
+                // 触发后的位置：与列表里那张封面共用同一个键，
+                // 于是封面从"触发前它在列表里的矩形"连续变成"这里的矩形"。
+                .jmSharedElement(jmComicSharedKey(comicId))
+                .clip(jmShape(Radius.lg)),
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                color = c.text,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (author.isNotEmpty()) {
+                Text(
+                    text = "作者：$author",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (blockedAuthor) c.textTertiary else c.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // 长按作者即屏蔽（加入关键词名单）。与标签用同一套手势，
+                    // 免得为「屏蔽」再塞一排按钮把详情页撑长
+                    modifier = if (onBlockAuthor != null) {
+                        Modifier.combinedClickable(onClick = {}, onLongClick = onBlockAuthor)
+                    } else {
+                        Modifier
+                    },
+                )
+            }
+            if (pageInfo.isNotEmpty()) {
+                Text(
+                    text = pageInfo,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.textTertiary,
+                )
+            }
+            if (onLike != null) {
+                // 点赞：未点过用描边心形，点过用实心强调色
+                Surface(
+                    shape = jmShape(Radius.xs),
+                    color = if (liked) c.accentSoft else c.surfaceSunken,
+                    onClick = onLike,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(
+                            horizontal = Spacing.sm,
+                            vertical = Spacing.xxs,
+                        ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = if (liked) {
+                                Icons.Filled.Favorite
+                            } else {
+                                Icons.Filled.FavoriteBorder
+                            },
+                            contentDescription = if (liked) "已点赞" else "点赞",
+                            tint = if (liked) c.accent else c.textTertiary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            text = " $likes",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (liked) c.accent else c.textSecondary,
+                        )
+                    }
+                }
+            }
+            addTime?.takeIf { it.isNotBlank() }?.let {
+                Text("更新：$it", style = MaterialTheme.typography.labelSmall, color = c.textTertiary)
+            }
+        }
+    }
+}
+
 @Composable
 private fun DetailContent(
-    detail: AlbumDetail,
+    /** 数据还没到时为 null：头部照样画，下面只放状态提示。 */
+    detailOrNull: AlbumDetail?,
     repo: JmRepository,
+    comicId: String,
+    initialCoverUrl: String,
+    initialTitle: String,
+    loading: Boolean,
+    error: String?,
+    onRetry: () -> Unit,
     readEntry: ReadEntry?,
-    onOpenComic: (String) -> Unit,
+    onOpenComic: (ComicTarget) -> Unit,
     onReadChapter: (String) -> Unit,
     onOpenTag: (String) -> Unit,
     onLike: () -> Unit,
@@ -731,93 +869,53 @@ private fun DetailContent(
         contentPadding = PaddingValues(bottom = Spacing.xxl),
         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
-        // 头部：封面 + 元信息
+        // 头部：封面 + 元信息。
+        //
+        // **加载态与完成态共用这一个 item、这一个 composable**（key 也相同），
+        // 所以封面的共享元素节点从第一帧到数据到达一直是同一个，不会被销毁重建，
+        // 数据到达时只是文字变多 —— 见 [DetailHeader]。
         item(key = "head") {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-            ) {
-                AsyncImage(
-                    model = repo.coverUrl(detail.id, detail.addTime),
-                    contentDescription = detail.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .width(120.dp)
-                        .aspectRatio(3f / 4f)
-                        // 触发后的位置：与列表里那张封面共用同一个键，
-                        // 于是封面从"触发前它在列表里的矩形"连续变成"这里的矩形"。
-                        .jmSharedElement(jmComicSharedKey(detail.id))
-                        .clip(jmShape(Radius.lg)),
-                )
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-                ) {
-                    Text(
-                        text = detail.name.orEmpty(),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = c.text,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (detail.author.isNotEmpty()) {
-                        Text(
-                            text = "作者：" + detail.author.joinToString("、"),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (blockedAuthor) c.textTertiary else c.textSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            // 长按作者即屏蔽（加入关键词名单）。与标签用同一套手势，
-                            // 免得为「屏蔽」再塞一排按钮把详情页撑长
-                            modifier = Modifier.combinedClickable(
-                                onClick = {},
-                                onLongClick = { onBlockAuthor(detail.author.first()) },
-                            ),
-                        )
+            val detail = detailOrNull
+            val cover = detail?.let { repo.coverUrl(it.id, it.addTime) }.orEmpty()
+            DetailHeader(
+                comicId = comicId,
+                // 数据到了以它为准（地址通常一致），没到就用列表侧带来的；
+                // 两者都空才退回按 id 拼模板 —— 关键是这一帧就有封面可画。
+                coverUrl = cover.ifBlank { initialCoverUrl.ifBlank { repo.coverUrl(comicId) } },
+                title = detail?.name?.takeIf { it.isNotBlank() } ?: initialTitle,
+                author = detail?.author?.joinToString("、").orEmpty(),
+                pageInfo = detail?.let { d ->
+                    buildString {
+                        append("共 ${d.totalPhotos} 页")
+                        if (d.commentTotal > 0) append(" · ${d.commentTotal} 评论")
                     }
-                    Text(
-                        text = buildString {
-                            append("共 ${detail.totalPhotos} 页")
-                            if (detail.commentTotal > 0) append(" · ${detail.commentTotal} 评论")
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = c.textTertiary,
-                    )
-                    // 点赞：未点过用描边心形，点过用实心强调色
-                    Surface(
-                        shape = jmShape(Radius.xs),
-                        color = if (detail.liked) c.accentSoft else c.surfaceSunken,
-                        onClick = onLike,
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(
-                                horizontal = Spacing.sm,
-                                vertical = Spacing.xxs,
-                            ),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = if (detail.liked) {
-                                    Icons.Filled.Favorite
-                                } else {
-                                    Icons.Filled.FavoriteBorder
-                                },
-                                contentDescription = if (detail.liked) "已点赞" else "点赞",
-                                tint = if (detail.liked) c.accent else c.textTertiary,
-                                modifier = Modifier.size(14.dp),
-                            )
-                            Text(
-                                text = " ${detail.likes}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (detail.liked) c.accent else c.textSecondary,
-                            )
-                        }
-                    }
-                    detail.addTime?.takeIf { it.isNotBlank() }?.let {
-                        Text("更新：$it", style = MaterialTheme.typography.labelSmall, color = c.textTertiary)
-                    }
+                }.orEmpty(),
+                liked = detail?.liked == true,
+                likes = detail?.likes ?: 0,
+                addTime = detail?.addTime,
+                blockedAuthor = blockedAuthor,
+                // 还没有数据时不显示点赞按钮：它要联网，画出来也点不了
+                onLike = if (detail == null) null else onLike,
+                onBlockAuthor = detail?.author?.firstOrNull()?.let { first -> { onBlockAuthor(first) } },
+            )
+        }
+
+        // 数据还没到（或只剩错误）：头部已经占住了它最终的位置，这里只补状态提示。
+        // 这句之后直接结束 —— 下面所有 item 都假定有数据。
+        val detail = detailOrNull
+        if (detail == null) {
+            item(key = "state") {
+                when {
+                    loading -> LoadingBox()
+
+                    error != null -> ErrorBox(message = error, onRetry = onRetry)
+
+                    // 兜底：加载结束却没有内容也没有错误（例如异常没有 message）时，
+                    // 之前这里什么都不渲染，用户面对的是一张只有顶栏的白屏，且没有重试入口
+                    else -> ErrorBox(message = "没能加载出这部作品", onRetry = onRetry)
                 }
             }
+            return@LazyColumn
         }
 
         // 作者（可点，跳同作者搜索）
@@ -1116,10 +1214,13 @@ private fun DetailContent(
                     horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                 ) {
                     items(detail.relatedList, key = { it.id }) { comic ->
+                        val cover = repo.coverUrl(comic)
                         ComicCard(
                             item = comic,
-                            coverUrl = repo.coverUrl(comic),
-                            onClick = { onOpenComic(comic.id) },
+                            coverUrl = cover,
+                            onClick = {
+                                onOpenComic(ComicTarget(comic.id, cover, comic.name.orEmpty()))
+                            },
                         )
                     }
                 }

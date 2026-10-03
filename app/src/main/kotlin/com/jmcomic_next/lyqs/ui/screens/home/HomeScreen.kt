@@ -27,6 +27,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -37,6 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.jmcomic_next.lyqs.ui.ComicTarget
 import com.jmcomic_next.lyqs.ui.jmComicSharedKey
 import com.jmcomic_next.lyqs.ui.LocalBottomBarInset
 import com.jmcomic_next.lyqs.data.JmRepository
@@ -64,7 +66,7 @@ import com.jmcomic_next.lyqs.ui.theme.Radius
 fun HomeScreen(
     dark: Boolean,
     onToggleTheme: () -> Unit,
-    onOpenComic: (String) -> Unit,
+    onOpenComic: (ComicTarget) -> Unit,
     onOpenSection: (PromoteSection) -> Unit,
     onOpenWeek: () -> Unit,
     modifier: Modifier = Modifier,
@@ -133,7 +135,7 @@ fun HomeScreen(
 private fun HomeContent(
     state: HomeUiState,
     repo: JmRepository,
-    onOpenComic: (String) -> Unit,
+    onOpenComic: (ComicTarget) -> Unit,
     onOpenSection: (PromoteSection) -> Unit,
     onLoadMore: () -> Unit,
     onRetryLoadMore: () -> Unit,
@@ -145,6 +147,26 @@ private fun HomeContent(
     // 因此默认只展开前几个，其余按需追加。
     var visibleSections by rememberSaveable { mutableIntStateOf(INITIAL_SECTIONS) }
     val sections = state.sections.filter { it.content.isNotEmpty() }.take(visibleSections)
+
+    // **同一部作品出现在两个分区里时，两张卡不挂共享键。**
+    //
+    // 首页是唯一"一屏里有好几条列表"的页面（分类 / 搜索 / 更多 / 周刊各自只有一条列表，
+    // 而它们都用 `items(key = { it.id })`，同一个列表里不可能有两个相同的 id）。
+    // 两条分区同时可见时，同一部作品的两张卡会挂着**同一个共享键**，共享元素只看 key、
+    // 不看"这两处是不是同一页里的兄弟"，于是会把这两张卡当成"一张变成了另一张"来播 ——
+    // 明明只是滚动列表，却有一张封面从这张卡飞到那张卡（见 LocalSharedElementEnabled）。
+    //
+    // 重复出现的作品索性不参与：它本来就有两张，往哪张飞都是错的。
+    // 代价是"从这两张卡进详情"没有封面动画 —— 这是按「重复的作品不放动画」
+    // 这条规则有意为之的，非重复作品的"列表 → 详情"完全不受影响。
+    val duplicatedComicIds = remember(sections) {
+        sections.asSequence()
+            .flatMap { it.content.asSequence() }
+            .groupingBy { it.id }
+            .eachCount()
+            .filterValues { it > 1 }
+            .keys
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -169,11 +191,20 @@ private fun HomeContent(
                     horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                 ) {
                     items(section.content, key = { it.id }) { comic ->
+                        // 封面地址顺手算一次：卡片自己要用，导航参数也要用
+                        val cover = repo.coverUrl(comic)
                         ComicCard(
                             item = comic,
-                            coverUrl = repo.coverUrl(comic),
-                            onClick = { onOpenComic(comic.id) },
-                            sharedKey = jmComicSharedKey(comic.id),
+                            coverUrl = cover,
+                            // 封面与标题跟着路由一起走：详情页第一帧才有"触发后的位置"
+                            onClick = {
+                                onOpenComic(ComicTarget(comic.id, cover, comic.name.orEmpty()))
+                            },
+                            sharedKey = if (comic.id in duplicatedComicIds) {
+                                null
+                            } else {
+                                jmComicSharedKey(comic.id)
+                            },
                         )
                     }
                 }
@@ -220,11 +251,14 @@ private fun HomeContent(
         }
 
         items(state.latest, key = { "latest-${it.id}" }) { comic ->
+            val cover = repo.coverUrl(comic)
             Box(Modifier.padding(horizontal = Spacing.lg)) {
                 ComicRow(
                     item = comic,
-                    coverUrl = repo.coverUrl(comic),
-                    onClick = { onOpenComic(comic.id) },
+                    coverUrl = cover,
+                    onClick = {
+                        onOpenComic(ComicTarget(comic.id, cover, comic.name.orEmpty()))
+                    },
                 )
             }
         }

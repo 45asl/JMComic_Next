@@ -31,6 +31,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.jmcomic_next.lyqs.ui.ComicTarget
 import com.jmcomic_next.lyqs.ui.jmComicSharedKey
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
@@ -208,7 +209,7 @@ class WeekViewModel(private val repo: JmRepository) : ViewModel() {
 @Composable
 fun WeekScreen(
     onBack: () -> Unit,
-    onOpenComic: (String) -> Unit,
+    onOpenComic: (ComicTarget) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalRepository.current
@@ -277,10 +278,12 @@ fun WeekScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
                 items(state.items, key = { it.id }) { comic ->
+                    val cover = repo.coverUrl(comic)
                     ComicCard(
                         item = comic,
-                        coverUrl = repo.coverUrl(comic),
-                        onClick = { onOpenComic(comic.id) },
+                        coverUrl = cover,
+                        // 封面与标题随路由带给详情页：共享元素的第一帧目标矩形
+                        onClick = { onOpenComic(ComicTarget(comic.id, cover, comic.name.orEmpty())) },
                         sharedKey = jmComicSharedKey(comic.id),
                         width = CardSizes.grid,
                     )

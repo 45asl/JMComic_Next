@@ -49,6 +49,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jmcomic_next.lyqs.data.JmRepository
 import com.jmcomic_next.lyqs.data.remote.dto.FavoriteFolder
 import com.jmcomic_next.lyqs.data.remote.dto.ListItem
+import com.jmcomic_next.lyqs.ui.ComicTarget
 import com.jmcomic_next.lyqs.ui.LocalRepository
 import com.jmcomic_next.lyqs.ui.components.ComicRow
 import com.jmcomic_next.lyqs.ui.components.ErrorBox
@@ -350,7 +351,7 @@ class AccountListViewModel(
 fun AccountListScreen(
     kind: AccountListKind,
     onBack: () -> Unit,
-    onOpenComic: (String) -> Unit,
+    onOpenComic: (ComicTarget) -> Unit,
     onLogin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -456,11 +457,16 @@ fun AccountListScreen(
                         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
                     ) {
                         items(state.items, key = { it.id }) { comic ->
+                            val cover = repo.coverUrl(comic)
                             Box(Modifier.fillMaxWidth()) {
                                 ComicRow(
                                     item = comic,
-                                    coverUrl = repo.coverUrl(comic),
-                                    onClick = { onOpenComic(comic.id) },
+                                    coverUrl = cover,
+                                    onClick = {
+                                        onOpenComic(
+                                            ComicTarget(comic.id, cover, comic.name.orEmpty())
+                                        )
+                                    },
                                     trailing = if (kind == AccountListKind.Tracking) {
                                         {
                                             IconButton(onClick = { vm.untrack(comic.id) }) {

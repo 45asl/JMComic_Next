@@ -41,6 +41,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.jmcomic_next.lyqs.ui.ComicTarget
 import com.jmcomic_next.lyqs.ui.jmComicSharedKey
 import com.jmcomic_next.lyqs.ui.LocalBottomBarInset
 import com.jmcomic_next.lyqs.data.JmRepository
@@ -262,7 +263,7 @@ class CategoryViewModel(private val repo: JmRepository) : ViewModel() {
 @Composable
 fun CategoryScreen(
     onOpenTag: (String) -> Unit,
-    onOpenComic: (String) -> Unit,
+    onOpenComic: (ComicTarget) -> Unit,
     onOpenCreators: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -413,7 +414,7 @@ private fun CategoryGrid(
     loadingMore: Boolean,
     loadMoreError: String?,
     exhausted: Boolean,
-    onOpenComic: (String) -> Unit,
+    onOpenComic: (ComicTarget) -> Unit,
     onOpenTag: (String) -> Unit,
     onLoadMore: () -> Unit,
     onRetryLoadMore: () -> Unit,
@@ -444,10 +445,12 @@ private fun CategoryGrid(
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         items(comics, key = { it.id }) { comic ->
+            val cover = repo.coverUrl(comic)
             ComicCard(
                 item = comic,
-                coverUrl = repo.coverUrl(comic),
-                onClick = { onOpenComic(comic.id) },
+                coverUrl = cover,
+                // 封面与标题随路由带给详情页：共享元素的第一帧目标矩形
+                onClick = { onOpenComic(ComicTarget(comic.id, cover, comic.name.orEmpty())) },
                 sharedKey = jmComicSharedKey(comic.id),
                 width = CardSizes.grid,
             )

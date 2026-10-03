@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.profile
 
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -447,10 +448,31 @@ private fun AppearanceCard(
             onCheckedChange = { onUiOptionsChange(uiOptions.copy(monetBlur = it)) },
         )
 
+        // 预测性返回：这一项**只在"系统自己没有这一层"的版本上**有意义（Android 13 / 14）。
+        //
+        //  · Android 15（API 35）起，系统级预测性返回对 targetSdk ≥ 35 的应用默认开启，
+        //    是**系统在窗口层面**推整个应用（本应用 targetSdk = 36），应用关不掉。
+        //    那时再叠我们这层跟手淡出就是同一件事做两遍 —— JmNavHost 在 35+ 上不生效。
+        //  · Android 12 及更早没有预测性返回手势，这一项没有可跟的手。
+        //
+        // 这两种情况都**置灰并写清原因**：与其让用户"关掉了还看到返回动作"以为开关坏了，
+        // 不如如实说明。开关的**存值**保留不动（换回 Android 13 / 14 的设备仍按原样生效）。
+        val predictiveBackUsable =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM
         OptionSwitch(
             title = "预测性返回",
-            desc = "Android 13+：返回手势进行中，当前页跟手退后并缩小，松手前就能看出要退出。",
+            desc = when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM ->
+                    "Android 15 起由系统提供（返回手势中系统会推动整个窗口），本项不再生效，已停用。"
+                predictiveBackUsable ->
+                    // 1.4.3 起跟手阶段只做淡、不做缩放（缩放会把整页内容连同封面一起缩），
+                    // 文案也必须跟着改 —— 否则用户会去找那个"缩小"。
+                    "返回手势进行中，当前页跟手淡出，松手前就能看出要退出。"
+                else -> "需要 Android 13 / 14；本机系统没有预测性返回手势，本项不生效。"
+            },
             checked = uiOptions.predictiveBack,
+            enabled = predictiveBackUsable,
             onCheckedChange = { onUiOptionsChange(uiOptions.copy(predictiveBack = it)) },
         )
 
@@ -489,6 +511,8 @@ private fun OptionSwitch(
     desc: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    /** 这一项在当前系统上还有没有意义；false 时置灰且点不动（例如 Android 15+ 的预测性返回）。 */
+    enabled: Boolean = true,
 ) {
     val c = JmTheme.colors
     Row(
@@ -496,10 +520,14 @@ private fun OptionSwitch(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f).padding(end = Spacing.md)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = c.text)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (enabled) c.text else c.textTertiary,
+            )
             Text(desc, style = MaterialTheme.typography.labelSmall, color = c.textTertiary)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
 }
 

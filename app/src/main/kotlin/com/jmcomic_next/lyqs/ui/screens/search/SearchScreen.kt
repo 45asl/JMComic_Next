@@ -51,6 +51,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.jmcomic_next.lyqs.ui.ComicTarget
 import com.jmcomic_next.lyqs.ui.jmComicSharedKey
 import com.jmcomic_next.lyqs.ui.LocalBottomBarInset
 import com.jmcomic_next.lyqs.data.JmRepository
@@ -312,7 +313,7 @@ class SearchViewModel(
  */
 @Composable
 fun SearchScreen(
-    onOpenComic: (String) -> Unit,
+    onOpenComic: (ComicTarget) -> Unit,
     modifier: Modifier = Modifier,
     initialQuery: String = "",
 ) {
@@ -340,7 +341,8 @@ fun SearchScreen(
     LaunchedEffect(state.redirectAid) {
         state.redirectAid?.let { id ->
             vm.consumeRedirect()
-            onOpenComic(id)
+            // 「按编号精确检索」只有编号：封面退回按 id 拼模板，标题等接口返回
+            onOpenComic(ComicTarget(id))
         }
     }
 
@@ -476,11 +478,14 @@ fun SearchScreen(
                     }
                 }
                 items(state.results, key = { it.id }) { comic ->
+                    val cover = repo.coverUrl(comic)
                     Box(Modifier.fillMaxWidth()) {
                         ComicRow(
                             item = comic,
-                            coverUrl = repo.coverUrl(comic),
-                            onClick = { onOpenComic(comic.id) },
+                            coverUrl = cover,
+                            onClick = {
+                                onOpenComic(ComicTarget(comic.id, cover, comic.name.orEmpty()))
+                            },
                         )
                     }
                 }
@@ -511,7 +516,7 @@ private fun SuggestionPanel(
     hotTags: List<String>,
     recommend: List<ListItem>,
     coverUrl: (ListItem) -> String,
-    onOpenComic: (String) -> Unit,
+    onOpenComic: (ComicTarget) -> Unit,
     onPick: (String) -> Unit,
     onClearHistory: () -> Unit,
 ) {
@@ -564,10 +569,13 @@ private fun SuggestionPanel(
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                     items(recommend, key = { it.id }) { comic ->
+                        val cover = coverUrl(comic)
                         ComicCard(
                             item = comic,
-                            coverUrl = coverUrl(comic),
-                            onClick = { onOpenComic(comic.id) },
+                            coverUrl = cover,
+                            onClick = {
+                                onOpenComic(ComicTarget(comic.id, cover, comic.name.orEmpty()))
+                            },
                             sharedKey = jmComicSharedKey(comic.id),
                         )
                     }
