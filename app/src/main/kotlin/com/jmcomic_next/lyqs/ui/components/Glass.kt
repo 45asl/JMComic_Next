@@ -93,7 +93,7 @@ fun GlassSurface(
     val surface = JmTheme.spec.surface
     val spec = JmTheme.spec
     val options = LocalUiOptions.current
-    val noiseBrush = rememberNoiseBrush()
+    val noiseBrush = sharedNoiseBrush()
 
     // 底有没有真实纹理（用户开了壁纸）。Acrylic 的颗粒只在有东西可散射时才画 ——
     // 判断放在这里而不是令牌里：同一个风格在「有壁纸 / 没壁纸」下应该表现不同，
@@ -288,8 +288,39 @@ fun GlassCircle(
  * 那正是「玻璃发灰、发脏、掉饱和度」的来源（深色卡饱和度从 0.392 掉到 0.266）。
  */
 @Composable
-private fun rememberNoiseBrush(): ShaderBrush = remember {
-    val size = 64
+/**
+ * 颗粒纹理：**进程内一份**（1.6.0）。
+ *
+ * 原来它是 `remember { ... }`——也就是**每个 [GlassSurface] 各建一份**：4096 次 xorshift、
+ * 一个 64×64 的 `IntArray`、一张 16KB 的 `Bitmap`，再上传到 GPU。全项目有 35 个调用点，
+ * 其中若干在**列表项**里（通知、评论、作者页），于是每滚出一项就重来一遍，`remember` 还让
+ * 每一项各自留着一张位图。
+ *
+ * 而这张纹理是**常量**：种子固定、无随机、无时间依赖 —— 所以完全可以共享。
+ * 这一改把「每项一次分配 + 一次上传」变成「整进程一次」。
+ *
+ * 共享的安全性依赖"纹理永不变化"，这一点由 [noisePixels] 的测试钉住：它是确定性的纯函数，
+ * 不读时间也不读随机数。
+ */
+private fun sharedNoiseBrush(): ShaderBrush = NoiseBrushHolder.instance
+
+private object NoiseBrushHolder {
+    val instance: ShaderBrush by lazy {
+        val pixels = noisePixels(NOISE_SIZE)
+        val bitmap = Bitmap.createBitmap(pixels, NOISE_SIZE, NOISE_SIZE, Bitmap.Config.ARGB_8888)
+        ShaderBrush(ImageShader(bitmap.asImageBitmap(), TileMode.Repeated, TileMode.Repeated))
+    }
+}
+
+internal const val NOISE_SIZE = 64
+
+/**
+ * 生成颗粒纹理的像素（纯函数，确定性）。
+ *
+ * 抽出来是为了能被 JVM 单测直接验证「同样的输入永远得到同样的输出」——
+ * 上面那份共享缓存正是建立在这个性质上的。
+ */
+internal fun noisePixels(size: Int = NOISE_SIZE): IntArray {
     val pixels = IntArray(size * size)
     var seed = 0x9E3779B9u
     for (i in pixels.indices) {
@@ -304,6 +335,6 @@ private fun rememberNoiseBrush(): ShaderBrush = remember {
         // 因为均值不再偏移 —— 幅度不再等于「灰膜」。
         pixels[i] = (0x80 shl 24) or (lum shl 16) or (lum shl 8) or lum
     }
-    val bitmap = Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
-    ShaderBrush(ImageShader(bitmap.asImageBitmap(), TileMode.Repeated, TileMode.Repeated))
+    return pixels
 }
+

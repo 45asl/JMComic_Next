@@ -121,6 +121,22 @@ android {
 }
 
 
+/**
+ * Compose 编译器的性能报告与指标。
+ *
+ * 默认**关闭**（每次构建都写报告是没必要的噪音），要看的时候：
+ * `gradle :app:compileReleaseKotlin -PcomposeReports --rerun-tasks`
+ *
+ * 报告会列出「不可跳过的 composable」与「不稳定的类」—— 这是重组性能问题最直接的证据来源，
+ * 比凭感觉猜"哪里慢"可靠。
+ */
+if (project.hasProperty("composeReports")) {
+    composeCompiler {
+        reportsDestination = layout.buildDirectory.dir("compose_reports")
+        metricsDestination = layout.buildDirectory.dir("compose_metrics")
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
