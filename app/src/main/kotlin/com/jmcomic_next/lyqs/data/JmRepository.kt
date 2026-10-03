@@ -1,5 +1,9 @@
 package com.jmcomic_next.lyqs.data
 
+import com.jmcomic_next.lyqs.data.remote.dto.NotificationUnread
+import com.jmcomic_next.lyqs.data.remote.dto.NotificationPayload
+import com.jmcomic_next.lyqs.data.remote.dto.DailyCheckResult
+import com.jmcomic_next.lyqs.data.remote.dto.DailyPayload
 import com.jmcomic_next.lyqs.data.crypto.JmCrypto
 import com.jmcomic_next.lyqs.data.prefs.BlockStore
 import com.jmcomic_next.lyqs.data.remote.Envelope
@@ -682,6 +686,53 @@ class JmRepository(
             "page" to page.toString(),
         ),
     ).let { PagedList(it.list, total = 0) }
+
+    /**
+     * 当前签到活动（1.5.4）。需要登录：`user_id` 就是账号 uid。
+     *
+     * 没有活动时服务端也会回 200，只是 `daily_id` 为空 —— 调用方要判空，
+     * 不能假定"拿到 daily 就一定能打卡"。
+     */
+    suspend fun daily(uid: String): DailyPayload = remote.get(
+        JmPaths.DAILY,
+        DailyPayload.serializer(),
+        mapOf("user_id" to uid),
+    )
+
+    /** 打卡。重复打卡由服务端在 `msg` 里说明，不当异常处理（见 [Daily.isAlreadyChecked]）。 */
+    suspend fun dailyCheck(uid: String, dailyId: String): DailyCheckResult = remote.post(
+        JmPaths.DAILY_CHECK,
+        DailyCheckResult.serializer(),
+        mapOf("user_id" to uid, "daily_id" to dailyId),
+    )
+
+    /**
+     * 通知列表（1.5.3）。`type` 取 `all` / `comic_follow` / `site_notice`。
+     *
+     * 追更通知由**服务端**在作品更新时生成 —— 客户端不需要（也不应该）自己
+     * 拿阅读时间与 `update_at` 去猜有没有更新。
+     */
+    suspend fun notifications(
+        type: String = "all",
+        page: Int = 1,
+    ): NotificationPayload = remote.get(
+        JmPaths.NOTIFICATIONS,
+        NotificationPayload.serializer(),
+        mapOf("type" to type, "page" to page.toString()),
+    )
+
+    /** 未读通知数量。拉它就能做角标，不需要任何后台任务。 */
+    suspend fun notificationsUnread(): NotificationUnread = remote.get(
+        JmPaths.NOTIFICATIONS_UNREAD,
+        NotificationUnread.serializer(),
+    )
+
+    /** 标记通知已读/未读（POST `{id, read}`）。 */
+    suspend fun markNotificationRead(id: String, read: Boolean): ActionResult = remote.post(
+        JmPaths.NOTIFICATIONS,
+        ActionResult.serializer(),
+        mapOf("id" to id, "read" to if (read) "1" else "0"),
+    )
 
     /** 漫画详情。 */
     suspend fun album(id: String): AlbumDetail = remote.get(

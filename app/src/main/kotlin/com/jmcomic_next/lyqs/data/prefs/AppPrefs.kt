@@ -90,10 +90,10 @@ class AppPrefs(context: Context) {
         get() = sp.getBoolean(KEY_SERIAL_NOTIFY, false)
         set(value) = sp.edit { putBoolean(KEY_SERIAL_NOTIFY, value) }
 
-    /** 上次通知过的那批更新的指纹；用来避免同一条更新被反复通知。 */
-    var serialNotifySeen: String?
-        get() = sp.getString(KEY_SERIAL_NOTIFY_SEEN, null)
-        set(value) = sp.edit { putString(KEY_SERIAL_NOTIFY_SEEN, value) }
+    /** 上次通知时的未读通知数；只有它变多才再提醒，避免同一批更新被反复通知。 */
+    var serialNotifySeen: Int
+        get() = sp.getInt(KEY_SERIAL_NOTIFY_SEEN, 0)
+        set(value) = sp.edit { putInt(KEY_SERIAL_NOTIFY_SEEN, value) }
 
     /** 动效性格：标准 / Plasma。 */
     var motionStyle: MotionStyle

@@ -36,6 +36,27 @@ object JmPaths {
      */
     const val SERIALIZATION = "serialization"
 
+    /**
+     * 通知列表（API_NOTIFICATIONS）：`GET {type, subType, page}` → `{code, data:{list,total}}`。
+     * `type` 取 `all` / `comic_follow`（追更）/ `site_notice`（站内通知）。
+     */
+    const val NOTIFICATIONS = "notifications"
+
+    /** 未读数量（API_NOTIFICATIONS_UNREAD）：`GET`，无参数。 */
+    const val NOTIFICATIONS_UNREAD = "notifications/unreadCount"
+
+    /**
+     * 每日签到（API_DAILY）：查询当前签到活动，返回 `daily_id`、活动名与按周分组的日历。
+     * 需要登录，参数 `user_id`。
+     */
+    const val DAILY = "daily"
+
+    /**
+     * 每日签到打卡（API_DAILY_CHECK）：**POST**，参数 `user_id` + `daily_id`。
+     * 重复打卡不算错误 —— 响应 `msg` 里会写「已經簽到過了」，见 [com.jmcomic_next.lyqs.data.Daily]。
+     */
+    const val DAILY_CHECK = "daily_chk"
+
     /** 搜索（API_COMIC_SEARCH），参数 `search_query`、`page`、`o`、`search_type`、`y`、`m`。 */
     const val SEARCH = "search"
 

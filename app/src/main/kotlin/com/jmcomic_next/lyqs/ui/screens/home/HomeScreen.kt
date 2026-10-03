@@ -1,8 +1,8 @@
 package com.jmcomic_next.lyqs.ui.screens.home
 
+import com.jmcomic_next.lyqs.data.remote.dto.NotificationItem
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.draw.clip
-import com.jmcomic_next.lyqs.data.prefs.ReadProgressStore
-import com.jmcomic_next.lyqs.data.SerialUpdates
 import androidx.compose.foundation.background
 import androidx.compose.ui.platform.LocalContext
 import com.jmcomic_next.lyqs.ui.LocalTagBlocker
@@ -158,15 +158,26 @@ private fun HomeContent(
 
     // 1.5.3：「你追的连载里哪些更新了」。
     //
-    // 判定用时间戳（列表项自带 update_at，本地记着"最后读它的时间"），**零额外请求**；
-    // 而且**不认分区标题、也不认分区 id** —— 哪一行里有更新的作品，那一行的标题旁就显示计数。
-    // 这样服务端改标题文案（实测就带「→右滑看更多→」）也不会让功能失效。
-    val context = LocalContext.current
-    val readProgress = remember(context) { ReadProgressStore(context) }
-    val updatedIds = remember(sections, state.latest) {
-        SerialUpdates.updated(sections.flatMap { it.content } + state.latest) { id ->
-            readProgress.lastReadAt(id)
-        }.map { it.id }.toSet()
+    // 数据来自**服务端的通知**（`comic_follow`）—— 作品更新时服务端就写了一条通知，
+    // 未读的那批里带的作品 id 就是要打标记的。**不要**在客户端拿阅读时间去猜：
+    // 那既不准（分不清"更新的是不是我看过的那话"）又白白多一次判断。
+    //
+    // 仍然**不认分区标题、也不认分区 id**：哪一行里有这些作品，那一行标题旁就显示计数，
+    // 所以服务端改标题文案（实测带「→右滑看更多→」）不会让标记消失。
+    val repoForNotify = LocalRepository.current
+    val loggedIn = repoForNotify.auth.isLoggedIn
+    val updatedIds by produceState(initialValue = emptySet<String>(), loggedIn) {
+        value = if (!loggedIn) {
+            emptySet()
+        } else {
+            runCatching {
+                repoForNotify.notifications(type = NotificationItem.TYPE_COMIC_FOLLOW)
+                    .list.filterNot { it.read }
+                    .flatMap { it.followedUpdates() }
+                    .mapNotNull { it.comicId }
+                    .toSet()
+            }.getOrDefault(emptySet())
+        }
     }
 
     // **同一部作品出现在两个分区里时，两张卡不挂共享键。**

@@ -30,42 +30,22 @@ class ReadProgressStore(context: Context) {
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val serializer = MapSerializer(String.serializer(), String.serializer())
-    private val timeSerializer = MapSerializer(String.serializer(), Long.serializer())
 
-    /**
-     * 记录某作品读到哪一话，**并记下这一次阅读的时间**。
-     *
-     * 时间是给「连载更新」判定用的：列表项自带 `update_at`，与"我最后读它的时间"一比
-     * 就知道有没有更新 —— 这条路径**不需要额外请求**，也不需要章节目录。
-     * 单独存一个 map（而不是把值改成复合结构）是为了**兼容已有数据**：
-     * 老用户的 `progress` 原样可读，只是"时间"一开始为空。
-     */
-    fun record(comicId: String, chapterId: String, at: Long = System.currentTimeMillis()) {
+    /** 记录某作品读到哪一话。 */
+    fun record(comicId: String, chapterId: String) {
         if (comicId.isBlank() || chapterId.isBlank()) return
         val map = readAll().toMutableMap()
-        val times = readTimes().toMutableMap()
-        val chapterChanged = map[comicId] != chapterId
-        val timeChanged = times[comicId] != at
-        if (!chapterChanged && !timeChanged) return
-        if (chapterChanged) map[comicId] = chapterId
-        if (timeChanged) times[comicId] = at
-        prefs.edit {
-            if (chapterChanged) putString(KEY_MAP, JmJson.encodeToString(serializer, map))
-            if (timeChanged) putString(KEY_TIME, JmJson.encodeToString(timeSerializer, times))
-        }
+        // 值没变就不写盘：详情页每次展示都会调用一次，避免无意义的重写
+        if (map[comicId] == chapterId) return
+        map[comicId] = chapterId
+        prefs.edit { putString(KEY_MAP, JmJson.encodeToString(serializer, map)) }
     }
 
     /** 上次读到的那一话；没有记录时返回 null。 */
     fun lastChapterId(comicId: String): String? =
         readAll()[comicId]?.takeIf { it.isNotBlank() }
 
-    /** 上次读它的时间（epoch 毫秒）；从未记录过返回 null —— 也就是"没追过"。 */
-    fun lastReadAt(comicId: String): Long? = readTimes()[comicId]
-
-    /** 读过（追过）的作品 id 集合。 */
-    fun trackedComicIds(): Set<String> = readTimes().keys
-
-    fun clear() = prefs.edit { remove(KEY_MAP); remove(KEY_TIME) }
+    fun clear() = prefs.edit { remove(KEY_MAP) }
 
     private fun readAll(): Map<String, String> {
         val raw = prefs.getString(KEY_MAP, null) ?: return emptyMap()
@@ -73,14 +53,8 @@ class ReadProgressStore(context: Context) {
         return runCatching { JmJson.decodeFromString(serializer, raw) }.getOrDefault(emptyMap())
     }
 
-    private fun readTimes(): Map<String, Long> {
-        val raw = prefs.getString(KEY_TIME, null) ?: return emptyMap()
-        return runCatching { JmJson.decodeFromString(timeSerializer, raw) }.getOrDefault(emptyMap())
-    }
-
     private companion object {
         const val PREFS_NAME = "jm_read_progress"
         const val KEY_MAP = "progress"
-        const val KEY_TIME = "read_time"
     }
 }

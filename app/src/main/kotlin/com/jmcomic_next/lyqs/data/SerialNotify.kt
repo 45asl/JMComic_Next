@@ -12,7 +12,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.jmcomic_next.lyqs.JmApp
 import com.jmcomic_next.lyqs.data.prefs.AppPrefs
-import com.jmcomic_next.lyqs.data.prefs.ReadProgressStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -76,22 +75,19 @@ object SerialNotify {
         if (!prefs.serialNotify) return false
 
         val app = context.applicationContext as? JmApp ?: return false
-        // 失败一律静默：后台任务拿不到数据是常态（无网、接口抖动），不该弹任何东西
-        val sections = runCatching { app.repository.promote() }.getOrNull() ?: return false
-        val readProgress = ReadProgressStore(context)
-        val updated = SerialUpdates.updated(sections.flatMap { it.content }) { readProgress.lastReadAt(it) }
-        if (updated.isEmpty()) return false
+        // 数据源是**服务端的未读通知数**：服务端在追更作品更新时生成通知，
+        // 我们只镜像"未读变多了"，不去猜有没有更新。失败一律静默。
+        val unread = runCatching { app.repository.notificationsUnread() }.getOrNull() ?: return false
+        val count = unread.total
+        // 没变多就不打扰：只有"比上次通知时更多"才值得再响一次
+        if (count <= 0 || count <= prefs.serialNotifySeen) return false
 
-        // 指纹：这批发过就不再发，直到更新集合变化
-        val fingerprint = SerialUpdates.fingerprint(updated)
-        if (prefs.serialNotifySeen == fingerprint) return false
-
-        notify(context, updated.size, updated.first().name.orEmpty())
-        prefs.serialNotifySeen = fingerprint
+        notify(context, count)
+        prefs.serialNotifySeen = count
         return true
     }
 
-    private fun notify(context: Context, count: Int, firstTitle: String) {
+    private fun notify(context: Context, count: Int) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(
@@ -110,7 +106,7 @@ object SerialNotify {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
         }
-        val text = if (count == 1) "《$firstTitle》更新了" else "你追的 $count 部有更新"
+        val text = "你追的连载有 $count 条新通知"
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("连载更新")

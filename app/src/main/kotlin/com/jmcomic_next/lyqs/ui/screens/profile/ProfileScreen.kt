@@ -1,5 +1,13 @@
 package com.jmcomic_next.lyqs.ui.screens.profile
 
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.runtime.produceState
+import com.jmcomic_next.lyqs.data.remote.dto.DailyPayload
+import com.jmcomic_next.lyqs.data.Daily
+import com.jmcomic_next.lyqs.JmApp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material3.Button
 import com.jmcomic_next.lyqs.data.prefs.AppPrefs
 import com.jmcomic_next.lyqs.data.SerialNotify
 import androidx.core.content.ContextCompat
@@ -94,6 +102,9 @@ import com.jmcomic_next.lyqs.ui.theme.MotionStyle
 import com.jmcomic_next.lyqs.ui.theme.ThemeStyle
 import com.jmcomic_next.lyqs.ui.theme.paletteFor
 
+// 见 ProfileScreen 里的说明：签到界面属于 1.5.4，1.5.3 不放出。
+private const val SHOW_CHECK_IN = false
+
 /**
  * 「我的」页。
  *
@@ -119,6 +130,7 @@ fun ProfileScreen(
     onOpenFavorites: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenTracking: () -> Unit,
+    onOpenNotifications: () -> Unit,
     onOpenTags: () -> Unit,
     onOpenBlock: () -> Unit,
     modifier: Modifier = Modifier,
@@ -149,6 +161,7 @@ fun ProfileScreen(
                     onOpenFavorites = onOpenFavorites,
                     onOpenHistory = onOpenHistory,
                     onOpenTracking = onOpenTracking,
+                    onOpenNotifications = onOpenNotifications,
                     onOpenTags = onOpenTags,
                 )
             }
@@ -184,6 +197,7 @@ private fun AccountCard(
     onOpenFavorites: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenTracking: () -> Unit,
+    onOpenNotifications: () -> Unit,
     onOpenTags: () -> Unit,
 ) {
     val c = JmTheme.colors
@@ -236,6 +250,20 @@ private fun AccountCard(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
                 // 追更与标签收藏都在服务端，且都有上限（追更 500 / 标签 50）
+                // 未读通知数：服务端在追更作品更新时生成通知，这里只镜像数量。
+                // 未登录时不请求（接口要账号），也就不显示角标。
+                val repoForUnread = LocalRepository.current
+                val loggedInForUnread = repoForUnread.auth.isLoggedIn
+                val unread by produceState(initialValue = 0, loggedInForUnread) {
+                    value = if (!loggedInForUnread) {
+                        0
+                    } else {
+                        runCatching { repoForUnread.notificationsUnread().total }.getOrDefault(0)
+                    }
+                }
+                // 未读角标挂在"通知"上（语义属于通知），"我的追更"保持干净：
+                // 两个入口都带同一个数字会让人以为是两件不同的事
+                EntryButton("通知", Icons.Filled.Notifications, onOpenNotifications, badge = unread)
                 EntryButton("我的追更", Icons.Filled.NotificationsNone, onOpenTracking)
                 EntryButton("标签收藏", Icons.Filled.BookmarkAdd, onOpenTags)
             }
@@ -260,7 +288,13 @@ private fun AccountCard(
 
 // 声明为 RowScope 扩展：这样函数体内的 Modifier.weight 才在作用域内
 @Composable
-private fun RowScope.EntryButton(label: String, icon: ImageVector, onClick: () -> Unit) {
+private fun RowScope.EntryButton(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    /** 未读计数；>0 时在标签右侧显示小胶囊。 */
+    badge: Int = 0,
+) {
     val c = JmTheme.colors
     GlassSurface(
         modifier = Modifier.weight(1f),
@@ -279,6 +313,18 @@ private fun RowScope.EntryButton(label: String, icon: ImageVector, onClick: () -
                 modifier = Modifier.size(18.dp),
             )
             Text(label, style = MaterialTheme.typography.bodyMedium, color = c.text)
+            if (badge > 0) {
+                // 与分区标题旁的"更新"计数同一套语言（强调色胶囊），用户不用学第二套标记
+                Text(
+                    text = if (badge > 99) "99+" else badge.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.textOnAccent,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(Radius.pill))
+                        .background(c.accent)
+                        .padding(horizontal = Spacing.xs, vertical = 1.dp),
+                )
+            }
         }
     }
 }
@@ -431,6 +477,128 @@ private fun AppearanceCard(
             }
             Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
         }
+
+    // 1.5.4 的签到界面先不放出：1.5.3 是通知版本，发布里不该混进下一个版本的功能。
+    // 数据层（Daily / JmRepository.daily）已经就位，把下面这个常量改成 true 即可启用。
+    if (SHOW_CHECK_IN) {
+            // ---- 1.5.4 每日签到 ----
+            //
+            // 签到需要登录（接口要 user_id），未登录时不发起任何请求，只给一句说明。
+            // 活动数据按 uid 拉取：换账号必须重新拉，否则会把上一个账号的签到状态显示出来。
+            val dailyContext = LocalContext.current
+            val auth = remember(dailyContext) {
+                (dailyContext.applicationContext as JmApp).authStore
+            }
+            val authState by auth.state.collectAsStateWithLifecycle()
+            val uid = authState.member?.uid
+            val repo = LocalRepository.current
+            val scope = rememberCoroutineScope()
+            var daily by remember { mutableStateOf<DailyPayload?>(null) }
+            var dailyLoading by remember { mutableStateOf(false) }
+            var dailyNotice by remember { mutableStateOf<String?>(null) }
+
+            LaunchedEffect(uid) {
+                daily = null
+                dailyNotice = null
+                if (uid.isNullOrBlank()) return@LaunchedEffect
+                dailyLoading = true
+                daily = runCatching { repo.daily(uid) }.getOrNull()
+                dailyLoading = false
+            }
+
+            SettingCard(title = "每日签到") {
+                when {
+                    uid.isNullOrBlank() -> Text(
+                        text = "登录后可以签到。签到记录在服务端，本机不留存。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.textSecondary,
+                    )
+
+                    dailyLoading -> Text(
+                        text = "正在读取签到活动…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.textSecondary,
+                    )
+
+                    daily == null -> Text(
+                        // 说明两种可能，而不是直接说"失败"：没有进行中的活动也会走到这里
+                        text = "没读到签到活动（可能当前没有进行中的活动，或网络不通）。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.textSecondary,
+                    )
+
+                    else -> {
+                        val d = daily!!
+                        val complete = Daily.isComplete(d.record)
+                        Text(
+                            text = d.eventName ?: "签到活动",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = c.text,
+                            modifier = Modifier.padding(top = Spacing.sm),
+                        )
+                        Text(
+                            text = "已签 ${Daily.signedCount(d.record)} / ${Daily.totalDays(d.record)} 天",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = c.textSecondary,
+                        )
+                        // 按周铺格子：外层是周、内层是这一周的七天，与服务端返回的结构一致
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                            d.record.forEach { week ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                                    week.forEach { day ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .clip(RoundedCornerShape(Radius.sm))
+                                                .background(if (day.signed) c.accent else c.surface2)
+                                                .semantics {
+                                                    contentDescription = if (day.signed) "已签到" else "未签到"
+                                                },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                            modifier = Modifier.padding(top = Spacing.sm),
+                        ) {
+                            Button(
+                                // 已经签完就禁用；没有 daily_id 时也禁用（服务端没给可打卡的活动）
+                                enabled = !complete && !d.dailyId.isNullOrBlank(),
+                                onClick = {
+                                    val id = d.dailyId ?: return@Button
+                                    scope.launch {
+                                        dailyNotice = runCatching { repo.dailyCheck(uid, id) }
+                                            .fold(
+                                                onSuccess = { res ->
+                                                    if (Daily.isAlreadyChecked(res.msg)) {
+                                                        "今天已经签过了"
+                                                    } else {
+                                                        // 打完卡立刻重拉，让格子上的状态与按钮跟着变
+                                                        daily = runCatching { repo.daily(uid) }.getOrNull()
+                                                        res.msg?.takeIf { it.isNotBlank() } ?: "签到成功"
+                                                    }
+                                                },
+                                                onFailure = { "签到失败，稍后再试" },
+                                            )
+                                    }
+                                },
+                            ) { Text(if (complete) "本期已签完" else "签到") }
+
+                            dailyNotice?.let {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = c.textSecondary,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+    }
 
         // ---- 1.5.3 连载更新提醒：**可选、默认关** ----
         //
