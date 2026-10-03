@@ -10,10 +10,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
 
       - name: Cache Gradle
@@ -21,9 +21,6 @@ jobs:
         with:
           path: ~/.gradle/caches
           key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-
-      - name: 升级Gradle包装器到9.6.8
-        run: ./gradlew wrapper --gradle-version 9.6.8
 
       - name: Build APK
         run: ./gradlew assembleDebug
