@@ -19,23 +19,23 @@ import kotlinx.serialization.builtins.serializer
  * 规则同时以 [state] 暴露成 Flow：列表页在规则变化后要重新过滤，
  * 而「我的 → 屏蔽设置」的增删都发生在别的页面上。
  */
-class BlockStore(context: Context) {
+class BlockStore(context: Context) : BlockStoreApi {
 
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val _state = MutableStateFlow(read())
-    val state: StateFlow<BlockRules> = _state.asStateFlow()
+    override val state: StateFlow<BlockRules> = _state.asStateFlow()
 
     /** 当前规则的快照。列表过滤在数据层调用，走这里拿。 */
-    fun snapshot(): BlockRules = _state.value
+    override fun snapshot(): BlockRules = _state.value
 
-    fun addWord(word: String) = update { it.copy(words = it.words + word) }
-    fun removeWord(word: String) = update { it.copy(words = it.words - word) }
-    fun addTag(tag: String) = update { it.copy(tags = it.tags + tag) }
-    fun removeTag(tag: String) = update { it.copy(tags = it.tags - tag) }
-    fun addCategory(name: String) = update { it.copy(categories = it.categories + name) }
-    fun removeCategory(name: String) = update { it.copy(categories = it.categories - name) }
+    override fun addWord(word: String) = update { it.copy(words = it.words + word) }
+    override fun removeWord(word: String) = update { it.copy(words = it.words - word) }
+    override fun addTag(tag: String) = update { it.copy(tags = it.tags + tag) }
+    override fun removeTag(tag: String) = update { it.copy(tags = it.tags - tag) }
+    override fun addCategory(name: String) = update { it.copy(categories = it.categories + name) }
+    override fun removeCategory(name: String) = update { it.copy(categories = it.categories - name) }
 
     /** 该条目是否已在名单里（界面用来提示「已屏蔽」而不是重复添加）。 */
     fun isBlocked(type: Kind, value: String): Boolean {

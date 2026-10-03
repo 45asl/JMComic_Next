@@ -20,13 +20,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * 否则会在 token 仍然有效时把用户踢出去，表现就是「用着用着突然要重新登录」。
  * 服务端拒绝的处理见 [com.jmcomic_next.lyqs.data.JmRepository] 的会话失效回调。
  */
-/** 供界面观察的登录态快照。 */
-data class AuthState(
-    val loggedIn: Boolean = false,
-    val member: MemberInfo? = null,
-)
 
-class AuthStore(context: Context, private val secure: SecureStore = SecureStore(context)) : AuthSession {
+class AuthStore(context: Context, private val secure: SecureStore = SecureStore(context)) : AuthStoreApi {
 
     /**
      * 缓存与锁。
@@ -48,7 +43,7 @@ class AuthStore(context: Context, private val secure: SecureStore = SecureStore(
      * 此时「我的」页需要立刻反映为未登录，而不是等用户下次手动刷新。
      */
     private val _state = MutableStateFlow(AuthState())
-    val state: StateFlow<AuthState> = _state.asStateFlow()
+    override val state: StateFlow<AuthState> = _state.asStateFlow()
 
     private fun publish() {
         _state.value = AuthState(
@@ -63,7 +58,7 @@ class AuthStore(context: Context, private val secure: SecureStore = SecureStore(
         cachedToken
     }
 
-    val member: MemberInfo? get() = synchronized(lock) {
+    override val member: MemberInfo? get() = synchronized(lock) {
         ensureLoadedLocked()
         cachedMember
     }
@@ -71,7 +66,7 @@ class AuthStore(context: Context, private val secure: SecureStore = SecureStore(
     override val isLoggedIn: Boolean get() = !token.isNullOrBlank()
 
     /** 登录/注册成功后保存会话。 */
-    fun save(token: String, member: MemberInfo?) = synchronized(lock) {
+    override fun save(token: String, member: MemberInfo?) = synchronized(lock) {
         cachedToken = token
         cachedMember = member
         loaded = true
@@ -81,7 +76,7 @@ class AuthStore(context: Context, private val secure: SecureStore = SecureStore(
     }
 
     /** 更新会员信息（例如刷新后拿到的余额/等级），不动 token。 */
-    fun updateMember(member: MemberInfo?) = synchronized(lock) {
+    override fun updateMember(member: MemberInfo?) = synchronized(lock) {
         cachedMember = member
         secure.put(KEY_MEMBER, member?.let { JmJson.encodeToString(MemberInfo.serializer(), it) })
         publish()
