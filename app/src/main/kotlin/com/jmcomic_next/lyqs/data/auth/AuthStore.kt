@@ -26,7 +26,7 @@ data class AuthState(
     val member: MemberInfo? = null,
 )
 
-class AuthStore(context: Context, private val secure: SecureStore = SecureStore(context)) {
+class AuthStore(context: Context, private val secure: SecureStore = SecureStore(context)) : AuthSession {
 
     /**
      * 缓存与锁。
@@ -58,7 +58,7 @@ class AuthStore(context: Context, private val secure: SecureStore = SecureStore(
     }
 
     /** 当前 JWT。为空即未登录。 */
-    val token: String? get() = synchronized(lock) {
+    override val token: String? get() = synchronized(lock) {
         ensureLoadedLocked()
         cachedToken
     }
@@ -68,7 +68,7 @@ class AuthStore(context: Context, private val secure: SecureStore = SecureStore(
         cachedMember
     }
 
-    val isLoggedIn: Boolean get() = !token.isNullOrBlank()
+    override val isLoggedIn: Boolean get() = !token.isNullOrBlank()
 
     /** 登录/注册成功后保存会话。 */
     fun save(token: String, member: MemberInfo?) = synchronized(lock) {
@@ -93,7 +93,7 @@ class AuthStore(context: Context, private val secure: SecureStore = SecureStore(
      * 先清内存再清磁盘：即使磁盘清理失败，本次进程内也已经是未登录状态，
      * 不会出现「界面说登出了但请求仍带着旧 token」这种最糟的中间态。
      */
-    fun clear() = synchronized(lock) {
+    override fun clear() = synchronized(lock) {
         cachedToken = null
         cachedMember = null
         loaded = true

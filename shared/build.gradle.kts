@@ -22,5 +22,11 @@ kotlin {
 dependencies {
     // api 而不是 implementation：数据模型会出现在 :app 与桌面的公开签名里
     api(libs.kotlinx.serialization.json)
+    // 远端层用 api：这些类型会出现在 :app 与桌面的公开签名里
+    api(libs.retrofit)
+    api(libs.retrofit.serialization)
+    api(libs.okhttp)
+    api(libs.okhttp.logging)
+    api(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)
 }

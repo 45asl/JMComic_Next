@@ -1,7 +1,6 @@
 package com.jmcomic_next.lyqs.data.remote
 
-import com.jmcomic_next.lyqs.BuildConfig
-import com.jmcomic_next.lyqs.data.auth.AuthStore
+import com.jmcomic_next.lyqs.data.auth.AuthSession
 import com.jmcomic_next.lyqs.data.crypto.JmCrypto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -27,7 +26,9 @@ import java.util.concurrent.TimeUnit
  */
 class JmRemote(
     val session: JmSession,
-    private val authStore: AuthStore,
+    private val authStore: AuthSession,
+    /** 是否打印请求日志。Android 传 BuildConfig.DEBUG，桌面端传自己的判断 —— 跨平台模块里没有 BuildConfig。 */
+    private val debug: Boolean = false,
 ) {
 
     private val json = JmJson
@@ -56,7 +57,7 @@ class JmRemote(
             chain.proceed(request)
         }
         .apply {
-            if (BuildConfig.DEBUG) {
+            if (debug) {
                 addInterceptor(
                     HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
                 )

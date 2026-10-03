@@ -1,6 +1,6 @@
 package com.jmcomic_next.lyqs.data.crypto
 
-import android.util.Base64
+import okio.ByteString.Companion.decodeBase64
 import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
@@ -63,7 +63,7 @@ object JmCrypto {
         val key = SecretKeySpec(keyHex.toByteArray(Charsets.UTF_8), "AES")
         val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
         cipher.init(Cipher.DECRYPT_MODE, key)
-        val raw = Base64.decode(sanitizeBase64(cipherBase64), Base64.DEFAULT)
+        val raw = sanitizeBase64(cipherBase64).decodeBase64()?.toByteArray() ?: return null
         val plain = cipher.doFinal(raw)
         String(plain, Charsets.UTF_8)
     } catch (t: Throwable) {
@@ -74,7 +74,7 @@ object JmCrypto {
      * 把响应体清理成纯净的 Base64。
      *
      * 必需而不是洁癖：主机清单托管在对象存储上，返回的文本**开头带 UTF-8 BOM**（U+FEFF），
-     * `android.util.Base64.decode` 遇到非字母表字符会直接抛 IllegalArgumentException。
+     * 底层的 Base64 解码器遇到非字母表字符会失败（这里用 okio，Android 与桌面都可用）。
      * 换行与空格同样会被清掉（CryptoJS 的宽松解析掩盖了这一点，移植到 Android 就暴露了）。
      */
     private fun sanitizeBase64(text: String): String = buildString(text.length) {

@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.data
 
+import com.jmcomic_next.lyqs.BuildConfig
 import com.jmcomic_next.lyqs.data.remote.dto.DailyHistory
 import com.jmcomic_next.lyqs.data.remote.dto.DailyHistoryOptions
 import com.jmcomic_next.lyqs.data.remote.dto.NotificationUnread
@@ -890,7 +891,7 @@ class JmRepository(
             authStore: AuthStore,
             session: JmSession = JmSession(),
             blockStore: BlockStore? = null,
-        ): JmRepository = JmRepository(JmRemote(session, authStore), authStore, blockStore)
+        ): JmRepository = JmRepository(JmRemote(session, authStore, BuildConfig.DEBUG), authStore, blockStore)
     }
 }
 
