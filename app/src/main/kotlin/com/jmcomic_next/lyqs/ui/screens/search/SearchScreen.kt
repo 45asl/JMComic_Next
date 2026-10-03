@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
@@ -37,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -62,6 +64,8 @@ import com.jmcomic_next.lyqs.ui.LocalRepository
 import com.jmcomic_next.lyqs.ui.components.ComicCard
 import com.jmcomic_next.lyqs.ui.components.ComicRow
 import com.jmcomic_next.lyqs.ui.components.ErrorBox
+import com.jmcomic_next.lyqs.ui.components.GlassLevel
+import com.jmcomic_next.lyqs.ui.components.GlassSurface
 import com.jmcomic_next.lyqs.ui.components.GlassTopBar
 import com.jmcomic_next.lyqs.ui.components.LoadMoreFooter
 import com.jmcomic_next.lyqs.ui.components.LoadingBox
@@ -104,6 +108,14 @@ data class SearchUiState(
     val loadMoreError: String? = null,
     /** 已经到底。 */
     val exhausted: Boolean = false,
+    /**
+     * 每次「重新搜索」自增的编号（1.5.2）。
+     *
+     * 与 ViewModel 内部那个世代号同源，只是也让界面看得见：搜索页要在**新一次搜索**发起时
+     * 撤销上一次的「允许一次」（见 `TagBlockResolver.clearAllowances`），
+     * 否则上一次点开放行的作品会跟着关键词飘到下一次搜索结果里。
+     */
+    val searchId: Int = 0,
     /** 空关键词被提交时给一句提示，而不是什么都不做。 */
     val hint: String? = null,
     /**
@@ -204,6 +216,8 @@ class SearchViewModel(
                 loadMoreError = null,
                 exhausted = false,
                 history = prefs.searchHistory,
+                // 界面据此撤销上一次的「允许一次」：新的检索条件该重新按规则判
+                searchId = generation,
             )
         }
 
@@ -338,6 +352,27 @@ fun SearchScreen(
     var autoSearched by rememberSaveable { mutableStateOf(false) }
     val c = JmTheme.colors
 
+    // 标签屏蔽（1.5.2）：搜索结果同样按标签规则过滤，而且**要能说清是谁挡的**。
+    // 没有解析器（或没有标签规则）时 `hidden` 恒为空集合，列表与提示条都不出现。
+    val tagBlocker = LocalTagBlocker.current
+    val hiddenIds by remember(tagBlocker) {
+        tagBlocker?.hidden ?: MutableStateFlow(emptySet<String>())
+    }.collectAsStateWithLifecycle()
+    val blockedBy by remember(tagBlocker) {
+        tagBlocker?.blockedBy ?: MutableStateFlow(emptyMap<String, Set<String>>())
+    }.collectAsStateWithLifecycle()
+
+    // 「允许一次」只活这一次搜索：发起新一次检索时撤销上一次的放行。
+    // 用 rememberSaveable 记住已处理的编号 —— 从详情页返回会重新进入组合、
+    // LaunchedEffect 会重跑，但同一次搜索不该再撤销一次（否则刚放行的作品又被藏回去）。
+    var lastSearchId by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(state.searchId) {
+        if (state.searchId > 0 && state.searchId != lastSearchId) {
+            lastSearchId = state.searchId
+            tagBlocker?.clearAllowances()
+        }
+    }
+
     // 命中「按编号精确检索」时直接打开作品，不展示列表
     LaunchedEffect(state.redirectAid) {
         state.redirectAid?.let { id ->
@@ -430,6 +465,27 @@ fun SearchScreen(
             )
         }
 
+        // 本次结果里被标签规则挡掉的作品。**只算这次搜索真的返回了的那些**：
+        // 解析器里的 blockedBy 是全 App 共享的缓存，别的页面藏掉的作品
+        // 不该出现在搜索页这条提示里（否则标签列了一堆，点「允许一次」却什么都不变）。
+        val tagBlocked = state.results.filter { it.id in hiddenIds }
+        val tagBlockedTags = tagBlocked.flatMap { blockedBy[it.id].orEmpty() }.distinct()
+
+        // 提示条放在列表**外面**（固定在列表上方），两个原因：
+        //  1. 它是「这次搜索有东西被挡掉」的说明，跟着列表滚走就没人看见；
+        //  2. 放进 LazyColumn 首位会踩到 LazyList 的按 key 锚定：插入时它会把插入前
+        //     的首个可见项钉在原位（`animateItem` 依赖的正是这个行为），于是新插入的
+        //     提示条被顶到可视区之外 —— 实测「加完标签规则后提示条根本看不见，
+        //     要手动往上滑才出来」。移出列表就没有这个位置竞争。
+        if (tagBlocked.isNotEmpty() && !state.loading) {
+            TagBlockedNotice(
+                count = tagBlocked.size,
+                tags = tagBlockedTags,
+                onAllowOnce = { tagBlocker?.allowOnce(tagBlocked.map { it.id }.toSet()) },
+                modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+            )
+        }
+
         when {
             state.loading -> LoadingBox()
 
@@ -466,21 +522,30 @@ fun SearchScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
+                // 「有结果被你的屏蔽规则挡掉了」的说明条已移到列表外（见上面）：
+                // 放进列表首位会被 LazyList 的锚定顶出可视区
                 if (state.total > 0) {
                     item(key = "count") {
                         Text(
                             text = buildString {
                                 append("共 ${state.total} 条结果")
                                 if (state.hidden > 0) append(" · 已按屏蔽规则隐藏 ${state.hidden} 条")
+                                // 标签屏蔽是本地异步补上的，与上面服务端/关键词那部分分开算
+                                if (tagBlocked.isNotEmpty()) {
+                                    append(" · 标签屏蔽 ${tagBlocked.size} 条")
+                                }
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = c.textTertiary,
                         )
                     }
                 }
-                items(state.results, key = { it.id }) { comic ->
+                // 命中标签规则的作品滤掉（标签是异步取回来的，所以列表会随结果收敛）
+                items(state.results.filterNot { it.id in hiddenIds }, key = { it.id }) { comic ->
+                    // 条目可见才去取详情拿标签；没有标签规则时 request 内部直接返回，不发任何请求
+                    LaunchedEffect(comic.id) { tagBlocker?.request(comic.id) }
                     val cover = repo.coverUrl(comic)
-                    Box(Modifier.fillMaxWidth()) {
+                    Box(Modifier.fillMaxWidth().animateItem()) {
                         ComicRow(
                             item = comic,
                             coverUrl = cover,
@@ -499,6 +564,64 @@ fun SearchScreen(
                         onRetry = { vm.retryLoadMore() },
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 「有结果被标签屏蔽挡住了」提示条（1.5.2）。
+ *
+ * 为什么不能只显示一个数字：搜索页最容易出现的误解是「搜不到」——
+ * 用户看到结果少、翻两下就到底，会以为关键词不对，然后换词、再换词。
+ * 所以这里直接说清三件事：**有结果**、是**你的标签规则**挡的、
+ * 挡人的**标签是哪些**，并给一个马上能看的出口。
+ *
+ * 样式沿用详情页那条「按你的屏蔽规则…」提示（[GlassSurface] + 图标 + 右侧文字按钮），
+ * 不再另造一套视觉。
+ *
+ * 「允许一次」只作用于**本次搜索**、不写回屏蔽规则：按钮文案明确写「一次」，
+ * 副标题也把「不改动屏蔽规则」说出来，避免用户以为自己把规则改掉了。
+ */
+@Composable
+private fun TagBlockedNotice(
+    count: Int,
+    tags: List<String>,
+    onAllowOnce: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = JmTheme.colors
+    GlassSurface(modifier = modifier.fillMaxWidth(), level = GlassLevel.Card) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Block,
+                contentDescription = null,
+                tint = c.textTertiary,
+                modifier = Modifier.size(18.dp),
+            )
+            Column(
+                modifier = Modifier.weight(1f).padding(start = Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
+            ) {
+                Text(
+                    text = "有 $count 条结果被标签屏蔽挡住了",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.text,
+                )
+                if (tags.isNotEmpty()) {
+                    Text(
+                        // 「命中标签」用顿号连接：标签里出现逗号是常事，再用逗号分隔会读不清
+                        text = "命中：${tags.joinToString("、")}（仅本次搜索放行，不改动屏蔽规则）",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = c.textSecondary,
+                    )
+                }
+            }
+            TextButton(onClick = onAllowOnce) {
+                Text("允许一次", color = c.accent)
             }
         }
     }

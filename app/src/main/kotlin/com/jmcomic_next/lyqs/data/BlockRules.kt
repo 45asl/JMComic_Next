@@ -60,9 +60,19 @@ data class BlockRules(
     fun hitsTags(values: Collection<String>): List<String> =
         values.filter { tag -> tags.any { it.equals(tag, ignoreCase = true) } }
 
+    /**
+     * 这组标签命中了名单里的**哪些规则** —— 返回的是**规则自己的写法**。
+     *
+     * 与 [hitsTags] 只差返回值：那个回显作品上的标签原文（详情页要拿它去「不再屏蔽」），
+     * 这里回显用户名单里的写法，好让界面说「是你的『巨乳』这条规则挡掉的」。
+     * 大小写无关的匹配语义与 [hitsTags] / [matchesTags] 完全一致。
+     */
+    fun hitRuleTags(values: Collection<String>): List<String> =
+        tags.filter { rule -> values.any { it.equals(rule, ignoreCase = true) } }
+
     /** 这组标签是否命中任一标签规则。 */
     fun matchesTags(values: Collection<String>): Boolean =
-        tags.isNotEmpty() && values.any { v -> tags.any { it.equals(v, ignoreCase = true) } }
+        tags.isNotEmpty() && hitRuleTags(values).isNotEmpty()
 
     /** 详情页用：作者是否命中关键词（命中则给出「已屏蔽该作者」的提示）。 */
     fun hitsAuthor(detail: AlbumDetail): Boolean =

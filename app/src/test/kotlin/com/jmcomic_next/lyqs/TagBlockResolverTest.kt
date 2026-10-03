@@ -4,6 +4,7 @@ import com.jmcomic_next.lyqs.data.BlockRules
 import com.jmcomic_next.lyqs.data.TagBlockResolver
 import com.jmcomic_next.lyqs.data.TagCache
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -207,5 +208,170 @@ class TagBlockResolverTest {
         assertFalse(cache.all().isEmpty())
         val empty = TagCache().apply { load("") }
         assertEquals(0, empty.size())
+    }
+
+    // ------------------------------------------------------------------
+    // 1.5.2：命中原因 + 「允许一次」（搜索页的提示条与放行按钮）
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `blocked reasons report which tags hid which work`() {
+        val fetch = FakeFetch(
+            mapOf(
+                "1" to setOf("巨乳", "純愛", "短篇"),
+                "2" to setOf("單行本", "純愛"),
+                "3" to setOf("純愛"),
+            ),
+        )
+        val resolver = TagBlockResolver(fetch.asFetch(), scope())
+        // 名单里有一个谁都不命中的词：「巨乳」只该出现在作品 1 的原因里
+        resolver.setRules(BlockRules(tags = setOf("巨乳", "單行本", "NTR")))
+        resolver.request("1")
+        resolver.request("2")
+        resolver.request("3")
+
+        assertEquals(setOf("1", "2"), resolver.hidden.value)
+        assertEquals(
+            "要说清是哪部作品、被哪个标签命中",
+            mapOf("1" to setOf("巨乳"), "2" to setOf("單行本")),
+            resolver.blockedBy.value,
+        )
+        assertEquals(
+            "blockedBy 的键必须与 hidden 恒等，否则提示条会列着标签却找不到作品",
+            resolver.hidden.value,
+            resolver.blockedBy.value.keys,
+        )
+    }
+
+    @Test
+    fun `blocked reasons use the rule spelling so the notice matches the settings list`() {
+        // 作品上的标签是「Yaoi」，用户名单里写的是「yaoi」——提示条要回显名单里的写法，
+        // 用户才能一眼对上自己在设置里加的那条规则。
+        val fetch = FakeFetch(mapOf("1" to setOf("Yaoi")))
+        val resolver = TagBlockResolver(fetch.asFetch(), scope())
+        resolver.setRules(BlockRules(tags = setOf("yaoi")))
+        resolver.request("1")
+        assertEquals(mapOf("1" to setOf("yaoi")), resolver.blockedBy.value)
+    }
+
+    @Test
+    fun `allow once unhides at once and is not undone by later results of the same run`() {
+        // 同一次解析里，别的作品稍后才取回标签并触发重算 ——
+        // 如果「允许一次」只做了一次性的集合差，1 会被这一次重算重新塞回 hidden，
+        // 用户看到的就是「点了按钮，闪了一下又没了」。
+        val gate = CompletableDeferred<Unit>()
+        val fetch: suspend (String) -> Set<String>? = { id ->
+            if (id == "2") gate.await()      // 2 卡住，制造"稍后才有结果"
+            setOf("巨乳")
+        }
+        val resolver = TagBlockResolver(fetch, scope())
+        resolver.setRules(BlockRules(tags = setOf("巨乳")))
+
+        resolver.request("1")
+        assertEquals(setOf("1"), resolver.hidden.value)
+
+        resolver.allowOnce(setOf("1"))
+        assertEquals("点击那一刻就该放行，不用等下一次重算", emptySet<String>(), resolver.hidden.value)
+        assertTrue(resolver.blockedBy.value.isEmpty())
+
+        resolver.request("2")                // 未完成，还挂在那儿
+        gate.complete(Unit)                  // 2 回来了 → 触发一次重算
+
+        assertEquals("2 仍然按规则隐藏", setOf("2"), resolver.hidden.value)
+        assertEquals(mapOf("2" to setOf("巨乳")), resolver.blockedBy.value)
+    }
+
+    @Test
+    fun `allow once neither rewrites user rules nor persists anything`() {
+        // 「允许一次」是**看的行为**，不是**改设置的行为**：它不能写回 BlockRules，
+        // 也不能碰落盘回调（否则重启后屏蔽名单会莫名其妙变空）。
+        // 解析器按构造就只拿得到规则快照与 onPersist 回调，这里把两者的副作用都钉住。
+        val persisted = mutableListOf<String>()
+        val cache = TagCache()
+        val resolver = TagBlockResolver(
+            fetchTags = FakeFetch(mapOf("1" to setOf("巨乳"))).asFetch(),
+            scope = scope(),
+            cache = cache,
+            onPersist = { persisted += it },
+        )
+        // 模拟 BlockStore：一个由"用户操作"改写的规则容器
+        var storeRules = BlockRules(tags = setOf("巨乳"))
+        val snapshot = storeRules
+        resolver.setRules(snapshot)
+        resolver.request("1")
+        assertEquals("取到标签要落盘一次", 1, persisted.size)
+        val dumpBefore = cache.dump()
+
+        resolver.allowOnce(setOf("1"))
+
+        assertEquals("放行不得触发落盘", 1, persisted.size)
+        assertEquals("放行不得改动标签缓存", dumpBefore, cache.dump())
+        assertEquals("标签缓存里的内容原样保留", setOf("巨乳"), cache.get("1"))
+        assertEquals("用户的屏蔽规则原样不变", snapshot, storeRules)
+        assertEquals(setOf("巨乳"), snapshot.tags)
+        // 解析器自己持有的规则快照也没被改动 —— 表现是：等值的规则快照进来时不撤销放行
+        // （setRules 只在规则**真的**不同时才清空放行记录）
+        resolver.setRules(BlockRules(tags = setOf("巨乳")))
+        assertTrue("放行仍在生效，说明规则快照没被 allowOnce 动过", resolver.hidden.value.isEmpty())
+    }
+
+    @Test
+    fun `changing the rules revokes an earlier allow once`() {
+        // 语义：放行只对"当前这套规则"有效。用户一旦改了标签名单，
+        // 就该按新规则重新判一遍，而不是继续沿用上一次的放行。
+        val fetch = FakeFetch(mapOf("1" to setOf("巨乳", "純愛")))
+        val resolver = TagBlockResolver(fetch.asFetch(), scope())
+        resolver.setRules(BlockRules(tags = setOf("巨乳")))
+        resolver.request("1")
+        resolver.allowOnce(setOf("1"))
+        assertTrue(resolver.hidden.value.isEmpty())
+
+        resolver.setRules(BlockRules(tags = setOf("巨乳", "純愛")))
+        assertEquals("规则变了，放行作废，重新隐藏", setOf("1"), resolver.hidden.value)
+        assertEquals(mapOf("1" to setOf("巨乳", "純愛")), resolver.blockedBy.value)
+
+        // 撤销后可以再次放行
+        resolver.allowOnce(setOf("1"))
+        assertTrue(resolver.hidden.value.isEmpty())
+
+        // 一次都没变过的等值快照不该撤销放行（BlockStore 每次发射都会走到这里）
+        resolver.setRules(BlockRules(tags = setOf("巨乳", "純愛")))
+        assertTrue("等值规则快照不该把放行清掉", resolver.hidden.value.isEmpty())
+    }
+
+    @Test
+    fun `clear allowances re applies the rules and can be granted again`() {
+        // 语义：搜索页在**发起新一次搜索**时调用 clearAllowances()，
+        // 于是上一次的放行不会跟着飘到下一次搜索里。
+        val fetch = FakeFetch(mapOf("1" to setOf("巨乳")))
+        val resolver = TagBlockResolver(fetch.asFetch(), scope())
+        resolver.setRules(BlockRules(tags = setOf("巨乳")))
+        resolver.request("1")
+        resolver.allowOnce(setOf("1"))
+        assertTrue(resolver.hidden.value.isEmpty())
+
+        resolver.clearAllowances()
+        assertEquals(setOf("1"), resolver.hidden.value)
+        assertEquals("原因也要跟着回来", mapOf("1" to setOf("巨乳")), resolver.blockedBy.value)
+
+        resolver.allowOnce(setOf("1"))
+        assertTrue(resolver.hidden.value.isEmpty())
+        // 没有放行记录时 clearAllowances 是空操作
+        resolver.clearAllowances()
+        assertEquals(setOf("1"), resolver.hidden.value)
+    }
+
+    @Test
+    fun `allow once does not resurrect the tags path when there are no tag rules`() {
+        // 没有标签规则时整条路径都该是零开销：hidden / blockedBy 恒为空，
+        // allowOnce 也只是记个没人看的 id，不产生请求、不产生原因。
+        val fetch = FakeFetch(mapOf("1" to setOf("巨乳")))
+        val resolver = TagBlockResolver(fetch.asFetch(), scope())
+        resolver.setRules(BlockRules(words = setOf("广告")))
+        resolver.allowOnce(setOf("1"))
+        resolver.request("1")
+        assertEquals(emptyMap<String, Set<String>>(), resolver.blockedBy.value)
+        assertTrue(resolver.hidden.value.isEmpty())
+        assertEquals(emptyList<String>(), fetch.calls)
     }
 }

@@ -111,4 +111,30 @@ class BlockRulesTest {
         assertFalse(rules.isEmpty)
         assertFalse(rules.hides(item(name = "NTR", author = "NTR")))
     }
+
+    @Test
+    fun `hit rule tags report the rules that matched`() {
+        // 1.5.2：搜索页提示条要说出「是你的哪条规则挡的」，返回的必须是名单里的写法。
+        val rules = BlockRules(tags = setOf("巨乳", "NTR", "百合"))
+        // 「巨乳2」不该命中「巨乳」：标签规则是整体相等，不是子串（与关键词规则不同）
+        assertEquals(listOf("NTR"), rules.hitRuleTags(listOf("巨乳2", "NTR")))
+        assertEquals(emptyList<String>(), rules.hitRuleTags(listOf("純愛", "短篇")))
+        assertEquals("一个标签都不给时不能命中", emptyList<String>(), rules.hitRuleTags(emptyList()))
+
+        // 大小写无关，同样回显名单的写法
+        assertEquals(listOf("ntr"), BlockRules(tags = setOf("ntr")).hitRuleTags(listOf("NTR")))
+        // 没有任何标签规则时恒不命中
+        assertEquals(emptyList<String>(), BlockRules(words = setOf("NTR")).hitRuleTags(listOf("NTR")))
+    }
+
+    @Test
+    fun `matches tags agrees with hit rule tags`() {
+        // 两条路径必须同源：matchesTags 曾经自己写了一遍 any/any，
+        // 现在改为复用 hitRuleTags —— 这条测试防止两者语义再次分叉。
+        val values = listOf("Yaoi", "短篇")
+        assertTrue(BlockRules(tags = setOf("yaoi")).matchesTags(values))
+        assertTrue(BlockRules(tags = setOf("yaoi")).hitRuleTags(values).isNotEmpty())
+        assertFalse(BlockRules(tags = setOf("百合")).matchesTags(values))
+        assertTrue(BlockRules(tags = setOf("百合")).hitRuleTags(values).isEmpty())
+    }
 }

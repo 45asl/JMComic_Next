@@ -41,6 +41,18 @@ class TagBlockResolver(
     /** 命中标签规则、应当从列表里隐藏的作品 id。 */
     val hidden: StateFlow<Set<String>> = _hidden.asStateFlow()
 
+    /**
+     * 命中原因：作品 id → **命中的标签规则**（1.5.2）。
+     *
+     * 只报一个 id 集合时，界面只能说「隐藏了 N 条」；搜索页要告诉用户
+     * 「是哪些标签挡的」并给出「允许一次」，所以这里把原因一起报出来。
+     * 值与 [hidden] 恒一致：`blockedBy.keys == hidden`。
+     *
+     * 返回的是**规则里的写法**（见 [BlockRules.hitRuleTags]），不是作品上的写法。
+     */
+    private val _blockedBy = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+    val blockedBy: StateFlow<Map<String, Set<String>>> = _blockedBy.asStateFlow()
+
     private val semaphore = Semaphore(maxParallel.coerceAtLeast(1))
 
     /**
@@ -51,14 +63,33 @@ class TagBlockResolver(
     private val inFlight = ConcurrentHashMap.newKeySet<String>()
     private val failed = ConcurrentHashMap.newKeySet<String>()
 
+    /**
+     * 「允许一次」放行过的 id（1.5.2）。
+     *
+     * 只活在内存里，且**作用域是当前规则 + 当前这次搜索**：
+     *  - [setRules] 收到**不同**的规则时清空 —— 用户改了屏蔽名单，就该按新规则重新判一遍；
+     *  - [clearAllowances] 由搜索页在**发起新一次搜索**时调用 —— 上一次的放行不该跟到下一次；
+     *  - 进程被杀即失效（本来就是「一次」）。
+     *
+     * 它与 [rules] 是两回事：这里只记「这一次先让他看」，**绝不写回 [BlockRules]**，
+     * 用户的持久屏蔽名单从头到尾不被改动。
+     */
+    private val allowedOnce = ConcurrentHashMap.newKeySet<String>()
+
     /** 会被协程读取、被主线程的规则收集器写入，所以要有可见性保证。 */
     @Volatile
     private var rules: BlockRules = BlockRules()
 
     /** 规则变了：立刻按缓存重算，并给此前失败的条目一次重试机会。 */
+    @Synchronized
     fun setRules(newRules: BlockRules) {
+        val changed = newRules != rules
         rules = newRules
         failed.clear()
+        // 规则真的变了 → 此前「允许一次」的判定依据已经不存在，作废重判。
+        // （只在真的不同时清：BlockStore 每次发射都会调到这里，包括改关键词/分类，
+        //  清空的动作本身无害，但没必要为一个等值快照制造一次全量重算。）
+        if (changed) allowedOnce.clear()
         recompute()
     }
 
@@ -88,14 +119,60 @@ class TagBlockResolver(
     }
 
     /** 只用**已缓存**的标签重算命中集合（约束 5：不发任何请求）。 */
+    @Synchronized
     private fun recompute() {
         if (rules.tags.isEmpty()) {                              // 约束 1
+            _blockedBy.value = emptyMap()
             _hidden.value = emptySet()
             return
         }
-        _hidden.value = cache.all()
-            .filterValues { rules.matchesTags(it) }
-            .keys
+        val reasons = LinkedHashMap<String, Set<String>>()
+        cache.all().forEach { (id, tags) ->
+            // 「允许一次」放行的条目直接跳过：**这一次**不再因为标签被隐藏。
+            // 注意这里不能顺手把它从 cache 里删掉 —— 缓存是网络事实，
+            // 放行是用户当下的一次选择，删缓存会让别的页面白白重取一遍。
+            if (id in allowedOnce) return@forEach
+            val hit = rules.hitRuleTags(tags)
+            if (hit.isNotEmpty()) reasons[id] = hit.toSet()
+        }
+        // 两个 flow 一起换：blockedBy.keys == hidden 必须恒成立，
+        // 否则界面会「列着标签却找不到对应作品」或反过来。方法已经 @Synchronized。
+        _blockedBy.value = reasons
+        _hidden.value = reasons.keys
+    }
+
+    /**
+     * 「允许一次」：把 [ids] 从隐藏集合里放出来，并在**本次会话的这个规则/这次搜索内**
+     * 不再因为标签把它们隐藏（1.5.2）。
+     *
+     * 语义（与 [clearAllowances] / [setRules] 一起构成完整作用域）：
+     *  - **立即生效**：不等下一次 [recompute]，点击那一刻 [hidden] 与 [blockedBy] 就更新；
+     *  - **不会被后续结果塞回去**：放行记录在 [allowedOnce] 里，之后同一轮解析里
+     *    别的作品取回标签触发的 [recompute] 不会重新隐藏这些 id；
+     *  - **失效时机**：① [setRules] 收到不同的规则；② 搜索页发起新一次搜索调用
+     *    [clearAllowances]；③ 进程结束。三者任一发生后，它们重新按规则判定；
+     *  - **不改规则**：不碰 [BlockRules]，也不写 [com.jmcomic_next.lyqs.data.prefs.BlockStore]，
+     *    所以设置页里的屏蔽名单原样不变，重启后照旧屏蔽。
+     */
+    @Synchronized
+    fun allowOnce(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        allowedOnce.addAll(ids)
+        val next = _blockedBy.value - ids
+        _blockedBy.value = next
+        _hidden.value = next.keys
+    }
+
+    /**
+     * 撤销所有「允许一次」并立刻重算 —— 搜索页在**发起新一次搜索**时调用，
+     * 于是上一次的放行只活在那一次搜索里，不会跟到下一次。
+     * 没有放行记录时是空操作（不制造无谓的重算）。
+     */
+    @Synchronized
+    fun clearAllowances() {
+        if (allowedOnce.isEmpty()) return
+        allowedOnce.clear()
+        recompute()
     }
 
     /** 供启动时把落盘内容读回缓存；读完请再调一次 [setRules] 或 [restore]。 */
