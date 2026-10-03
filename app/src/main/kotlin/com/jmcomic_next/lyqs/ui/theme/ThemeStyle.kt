@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.theme
 
+import com.jmcomic_next.lyqs.LiteFeatures
 import androidx.compose.animation.core.Easing
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.font.FontWeight
@@ -401,11 +402,19 @@ object Styles {
         backdropGlow = 1f,
     )
 
-    fun of(style: ThemeStyle): JmSpec = when (style) {
-        ThemeStyle.WindowGlass -> windowGlass
-        ThemeStyle.Translucent -> translucent
-        ThemeStyle.FlatBlur -> flatBlur
-        ThemeStyle.Miuix -> miuix
-        ThemeStyle.Material -> material
-    }
+    fun of(style: ThemeStyle): JmSpec =
+        // lite **只保留两种纯色风格**（用户要求）。这里的判断是编译期常量，
+        // 所以另外三种玻璃风格的规格定义会被 R8 **整段删掉** ——
+        // 不只是"运行时不用"，而是**代码根本不存在**。这是"最强硬手段"的实际含义。
+        if (LiteFeatures.ENABLED) {
+            miuix
+        } else {
+            when (style) {
+                ThemeStyle.WindowGlass -> windowGlass
+                ThemeStyle.Translucent -> translucent
+                ThemeStyle.FlatBlur -> flatBlur
+                ThemeStyle.Miuix -> miuix
+                ThemeStyle.Material -> material
+            }
+        }
 }
