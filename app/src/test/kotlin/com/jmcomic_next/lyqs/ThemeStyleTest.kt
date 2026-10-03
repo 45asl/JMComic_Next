@@ -35,6 +35,23 @@ import org.junit.Test
  */
 class ThemeStyleTest {
 
+    /**
+     * lite 变体下跳过整个类（1.8.0）。
+     *
+     * 这里断言的是**完整的风格表**（五种风格各自的表面、圆角、投影、饱和度补偿…），
+     * 而 lite **有意**把这张表折叠成一种纯色风格 —— 目的正是让 R8 能删掉另外三种的规格。
+     * 所以这些断言在 lite 下不成立，也不该成立；用 assume 跳过而不是删掉它们：
+     * full 变体仍然靠它们守着风格表的正确性。
+     */
+    @org.junit.Before
+    fun skipOnLite() {
+        org.junit.Assume.assumeFalse(
+            "lite 变体没有完整风格表（有意折叠），本类的断言只适用于 full",
+            com.jmcomic_next.lyqs.LiteFeatures.ENABLED,
+        )
+    }
+
+
     @Test
     fun `default style keeps the original look`() {
         // 升级不该把老用户的界面换掉：默认必须还是博客那套（WindowGlass + Acrylic）
