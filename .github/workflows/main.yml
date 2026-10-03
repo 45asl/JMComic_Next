@@ -22,11 +22,8 @@ jobs:
           path: ~/.gradle/caches
           key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      - name: 更新Gradle到9.6.8
-        run: |
-          sed -i 's|distributionUrl=.*|distributionUrl=https\://services.gradle.org/distributions/gradle-9.6.8-bin.zip|g' gradle/wrapper/gradle-wrapper.properties
-          sed -i 's|https://repo1.maven.org/maven2|https://maven.aliyun.com/repository/public|g' build.gradle
-          sed -i 's|https://maven.google.com|https://maven.aliyun.com/repository/google|g' build.gradle
+      - name: 升级Gradle包装器到9.6.8
+        run: ./gradlew wrapper --gradle-version 9.6.8
 
       - name: Build APK
         run: ./gradlew assembleDebug
