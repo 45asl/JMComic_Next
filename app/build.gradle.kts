@@ -77,6 +77,31 @@ android {
         checkReleaseBuilds = false
     }
 
+    /**
+     * 版本变体（1.8.0）：`full` 是完整版，`lite` 面向极低性能设备。
+     *
+     * **用 product flavor 而不是 git 分支**：lite 是同一个应用的裁剪版，不是另一款应用。
+     * 开分支会让两者越走越远，最终 lite 拿不到任何新修复 —— 而低端设备上的用户恰恰最需要修复。
+     *
+     * 开关是**编译期常量**（`BuildConfig.LITE`），所以 `if (!BuildConfig.LITE)` 包住的整段代码
+     * 与资源会被 R8 一起删掉，而不是"编译进去但不执行"。
+     *
+     * 两个变体的 applicationId 相同：这是同一个应用的裁剪版，用户不该看到两个图标。
+     */
+    flavorDimensions += "edition"
+    productFlavors {
+        create("full") {
+            dimension = "edition"
+            buildConfigField("boolean", "LITE", "false")
+        }
+        create("lite") {
+            dimension = "edition"
+            buildConfigField("boolean", "LITE", "true")
+            // 注意：项目关掉了 resValues 构建特性，所以这里**不能**用 resValue 改应用名。
+            // lite 与 full 的区分靠功能开关，不靠名字 —— 保持同一个应用身份。
+        }
+    }
+
     buildTypes {
         release {
             // R8 混淆 + 资源压缩。debug 包未混淆时有 24MB，主要体积来自未被裁剪的
