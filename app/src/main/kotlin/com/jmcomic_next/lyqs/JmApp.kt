@@ -104,7 +104,8 @@ class JmApp : Application(), SingletonImageLoader.Factory {
             //  - 解码吃 CPU 和堆内存，开太多只会在低端机上互相抢内存，按核数封顶 8。
             .fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(fetchParallelism))
             .decoderCoroutineContext(Dispatchers.IO.limitedParallelism(decodeParallelism))
-            .crossfade(true)
+            // lite 关掉淡入：每张图少一次合成与重绘，低端设备上这是"用观感换流畅"的直接一笔
+            .crossfade(LiteFeatures.imageCrossfade)
             // 内存缓存提到 25%：阅读时来回滚动、切上一话/下一话都会重看同一批图，
             // 默认档在长图流里很快就会被挤掉，然后变成「明明刚看过却要重新下载」。
             .memoryCache { MemoryCache.Builder().maxSizePercent(context, 0.25).build() }

@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs
 
+import com.jmcomic_next.lyqs.data.wallpaper.WallpaperState
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -82,7 +83,9 @@ class MainActivity : ComponentActivity() {
                 LocalRepository provides repository,
                 LocalTagBlocker provides app.tagBlocker,
                 LocalWallpaperStore provides wallpaperStore,
-                LocalWallpaper provides wallpaper,
+                // lite：不显示壁纸（用户要求去掉所有壁纸与模糊）。
+                // 壁纸一关，依赖它的磨砂/颗粒也自然全部消失 —— 它们的物理前提就是"背后有东西"。
+                LocalWallpaper provides if (LiteFeatures.ENABLED) WallpaperState() else wallpaper,
             ) {
                 JmTheme(
                     darkTheme = isDark,

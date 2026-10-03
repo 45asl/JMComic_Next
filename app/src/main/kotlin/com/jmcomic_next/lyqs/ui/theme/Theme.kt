@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.theme
 
+import com.jmcomic_next.lyqs.LiteFeatures
 import android.app.Activity
 import android.os.Build
 import androidx.compose.animation.core.CubicBezierEasing
@@ -227,13 +228,24 @@ fun JmTheme(
     options: UiOptions = UiOptions(),
     content: @Composable () -> Unit,
 ) {
+    // ---- lite 变体的退化（1.8.0）----
+    //
+    // 用户的要求：lite **只保留 Miuix / Material 两种纯色风格**，并**去掉所有壁纸与模糊**；
+    // 另外全关可选项（悬浮底栏、莫奈上色、通透模式、预测性返回、动效性格）。
+    //
+    // 在这里一次性退化，而不是在几十个调用点写 if：下游的 spec / colorScheme / typography /
+    // LocalUiOptions 全部由这两个入参推导，改这一层全应用跟着变 ——
+    // 散落的 if 迟早漏一个，而漏掉的那处会表现为"lite 上还是卡"。
+    val effectiveStyle = if (LiteFeatures.ENABLED) ThemeStyle.Miuix else style
+    val effectiveOptions = if (LiteFeatures.ENABLED) UiOptions() else options
+
     val context = LocalContext.current
     val useDynamic = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     // 动效性格与界面风格正交：Plasma 只换曲线与时长，保留该风格自己的弹性开关
     // （HyperOS 的按下回弹是弹簧，不该被 Plasma 的 tween 覆盖掉）
-    val styleSpec = Styles.of(style)
-    val spec = when (options.motionStyle) {
+    val styleSpec = Styles.of(effectiveStyle)
+    val spec = when (effectiveOptions.motionStyle) {
         MotionStyle.Standard -> styleSpec
         MotionStyle.Plasma -> styleSpec.copy(motion = styleSpec.motion.asPlasma())
         MotionStyle.HyperOS -> styleSpec.copy(motion = styleSpec.motion.asHyperOS())
@@ -252,11 +264,11 @@ fun JmTheme(
         // 应用不再自带色板，而是把 M3 的角色投影成自己的令牌
         style == ThemeStyle.Material -> m3Scheme.toJmPalette()
 
-        !useDynamic -> paletteFor(style, darkTheme)
+        !useDynamic -> paletteFor(effectiveStyle, darkTheme)
 
         // 玻璃体系只借一个强调色：它们的识别度来自「半透明分层 + 发丝描边 + 环境渐变底」，
         // 如果整个 surface 家族都被系统色替换，毛玻璃的层次感会散掉
-        else -> paletteFor(style, darkTheme).withDynamicAccent(m3Scheme, darkTheme)
+        else -> paletteFor(effectiveStyle, darkTheme).withDynamicAccent(m3Scheme, darkTheme)
     }
 
     // Material 把 M3 的 scheme 原样交给 MaterialTheme（不做有损往返转换）；
@@ -277,14 +289,14 @@ fun JmTheme(
     CompositionLocalProvider(
         LocalJmPalette provides palette,
         LocalJmSpec provides spec,
-        LocalUiOptions provides options,
+        LocalUiOptions provides effectiveOptions,
     ) {
         MaterialTheme(
             // 通透模式下所有文字都加一圈反色柔光，否则文字压在壁纸上会糊
             colorScheme = colorScheme,
             typography = typographyOf(
                 spec.type,
-                shadow = if (options.ultraTranslucent) readabilityShadow(darkTheme) else null,
+                shadow = if (effectiveOptions.ultraTranslucent) readabilityShadow(darkTheme) else null,
             ),
             content = content,
         )
