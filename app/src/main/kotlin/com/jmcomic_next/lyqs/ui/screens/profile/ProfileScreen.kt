@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.profile
 
+import com.jmcomic_next.lyqs.LiteFeatures
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Notifications
@@ -414,7 +415,14 @@ private fun AppearanceCard(
 
         // 预览卡：**用该风格自己的令牌渲染**，所以预览就是它真实的样子，
         // 不是画一张示意图（图会跟实现走散，这种「示意图撒谎」的问题很难被发现）
-        ThemeStyle.entries.chunked(2).forEach { row ->
+        // lite 下只列出真正可用的两种纯色风格：另外三种的规格定义已被 R8 删除，
+        // 列出来会让用户选到一个不存在的风格（看起来像"选了没用"）
+        val availableStyles = if (LiteFeatures.ENABLED) {
+            listOf(ThemeStyle.Miuix, ThemeStyle.Material)
+        } else {
+            ThemeStyle.entries
+        }
+        availableStyles.chunked(2).forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm),

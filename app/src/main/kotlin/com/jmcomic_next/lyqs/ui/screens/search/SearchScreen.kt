@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.search
 
+import com.jmcomic_next.lyqs.ui.components.jmAnimateItem
 import com.jmcomic_next.lyqs.ui.LocalTagBlocker
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -575,7 +576,7 @@ fun SearchScreen(
                     // 条目可见才去取详情拿标签；没有标签规则时 request 内部直接返回，不发任何请求
                     LaunchedEffect(comic.id) { tagBlocker?.request(comic.id) }
                     val cover = repo.coverUrl(comic)
-                    Box(Modifier.fillMaxWidth().animateItem()) {
+                    Box(Modifier.fillMaxWidth().jmAnimateItem(this)) {
                         ComicRow(
                             item = comic,
                             coverUrl = cover,
@@ -748,7 +749,7 @@ private fun SuggestionPanel(
                                 onOpenComic(ComicTarget(comic.id, cover, comic.name.orEmpty()))
                             },
                             sharedKey = jmComicSharedKey(comic.id),
-                            modifier = Modifier.animateItem(),
+                            modifier = Modifier.jmAnimateItem(this),
                         )
                     }
                 }

@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.category
 
+import com.jmcomic_next.lyqs.ui.components.jmAnimateItem
 import com.jmcomic_next.lyqs.ui.LocalTagBlocker
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -462,7 +463,7 @@ private fun CategoryGrid(
                 // 封面与标题随路由带给详情页：共享元素的第一帧目标矩形
                 onClick = { onOpenComic(ComicTarget(comic.id, cover, comic.name.orEmpty())) },
                 sharedKey = jmComicSharedKey(comic.id),
-                modifier = Modifier.animateItem(),
+                modifier = Modifier.jmAnimateItem(this),
                 width = CardSizes.grid,
             )
         }

@@ -25,8 +25,14 @@ object LiteFeatures {
     /** 是否 lite 变体。编译期常量，可被 R8 用于消除分支。 */
     const val ENABLED: Boolean = BuildConfig.LITE
 
-    /** 阅读器预取页数：lite 更保守（默认档见阅读器的预取实现）。 */
-    val prefetchPages: Int get() = if (ENABLED) 2 else DEFAULT_PREFETCH_PAGES
+    /**
+     * 阅读器预取窗口：当前页之前 / 之后各预取几页。
+     *
+     * lite 更保守：低端设备上内存比流量紧张，少预取几页就是直接的内存收益
+     * （每张漫画图解码后都是几 MB 级别）。
+     */
+    val prefetchBefore: Int get() = if (ENABLED) 1 else FULL_PREFETCH_BEFORE
+    val prefetchAfter: Int get() = if (ENABLED) 3 else FULL_PREFETCH_AFTER
 
     /** 图片是否做淡入。lite 关掉：每张图少一次合成与重绘。 */
     val imageCrossfade: Boolean get() = !ENABLED
@@ -37,6 +43,7 @@ object LiteFeatures {
     /** 是否允许壁纸与模糊（lite 一律不允许，用户要求"去掉所有壁纸和模糊"）。 */
     val wallpaperAndBlur: Boolean get() = !ENABLED
 
-    /** 完整版的默认预取值，写在这里是为了让两边的差异一眼可见。 */
-    const val DEFAULT_PREFETCH_PAGES = 3
+    /** 完整版的预取窗口，写在这里是为了让两边的差异一眼可见。 */
+    const val FULL_PREFETCH_BEFORE = 2
+    const val FULL_PREFETCH_AFTER = 8
 }

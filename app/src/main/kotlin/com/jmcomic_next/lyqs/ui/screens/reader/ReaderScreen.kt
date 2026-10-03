@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.reader
 
+import com.jmcomic_next.lyqs.LiteFeatures
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -1024,9 +1025,9 @@ private fun PageFallback(text: String?, placeholderRatio: Float?, onClick: (() -
     }
 }
 
-/** 预取窗口：当前页之前 2 页、之后 8 页。 */
-private const val PREFETCH_BEFORE = 2
-private const val PREFETCH_AFTER = 8
+/** 预取窗口：见 [LiteFeatures.prefetchBefore] / [LiteFeatures.prefetchAfter]（lite 下更保守）。 */
+private val PREFETCH_BEFORE get() = LiteFeatures.prefetchBefore
+private val PREFETCH_AFTER get() = LiteFeatures.prefetchAfter
 
 /**
  * 把当前页前后的一段提前发出去。

@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.home
 
+import com.jmcomic_next.lyqs.ui.components.jmAnimateItem
 import com.jmcomic_next.lyqs.data.remote.dto.NotificationItem
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.draw.clip
@@ -280,7 +281,7 @@ private fun HomeContent(
                             },
                             updated = comic.id in updatedIds,
                             // 被滤掉时下面的条目**平滑上移**而不是跳一下
-                            modifier = Modifier.animateItem(),
+                            modifier = Modifier.jmAnimateItem(this),
                         )
                     }
                 }

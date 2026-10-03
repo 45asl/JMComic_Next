@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.random
 
+import com.jmcomic_next.lyqs.ui.components.jmAnimateItem
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -233,8 +234,7 @@ fun RandomListScreen(
                 items(ordered, key = { it.id }) { comic ->
                     Column(
                         // 命中屏蔽的条目会从这里消失；animateItem 让它"飞出去"而不是瞬间不见
-                        modifier = Modifier
-                            .animateItem()
+                        modifier = Modifier.jmAnimateItem(this)
                             .clickable { onOpenComic(target(repo, comic)) },
                         verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
                     ) {
@@ -266,9 +266,7 @@ fun RandomListScreen(
             ) {
                 items(ordered, key = { it.id }) { comic ->
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .animateItem()
+                        modifier = Modifier.fillMaxWidth().jmAnimateItem(this)
                             .clickable { onOpenComic(target(repo, comic)) },
                         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                     ) {
