@@ -152,10 +152,15 @@ fun DailyQuickFab(
 
     if (!loggedIn) return
 
-    // 摆在骰子**上面**：52dp 的按钮 + 间距
-    Box(modifier.padding(end = Spacing.lg, bottom = bottomInset + Spacing.md + 64.dp)) {
+    // 紧贴骰子上方：骰子高 52dp，再留 Spacing.sm 的缝。
+    // 注意提示文字**不能**放在这个 Box 里 —— 它会把外壳撑高，按钮就被顶上去了
+    //（上一版就是这么高的），所以提示单独摆一层。
+    Box(modifier.padding(end = Spacing.lg, bottom = bottomInset + Spacing.md + 52.dp + Spacing.sm)) {
         GlassSurface(
             level = GlassLevel.Raised,
+            // 反色：这块用带色的玻璃（tinted），图标取正文色而不是强调色，
+            // 这样它和旁边那颗强调色的骰子不会糊成一片
+            tinted = true,
             shape = RoundedCornerShape(percent = 50),
             modifier = Modifier.size(52.dp).combinedClickable(onClick = {
                 scope.launch {
@@ -185,17 +190,19 @@ fun DailyQuickFab(
             Icon(
                 imageVector = if (signedToday) Icons.Filled.Check else Icons.Filled.CalendarMonth,
                 contentDescription = if (signedToday) "今天已签到" else "快捷签到",
-                tint = c.accent,
+                tint = c.text,
                 modifier = Modifier.padding(14.dp),
             )
         }
-        notice?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.labelSmall,
-                color = c.textSecondary,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 60.dp),
-            )
-        }
+    }
+    // 提示单独一层：offset 只影响绘制位置，不会把上面那个 Box 撑高
+    notice?.let {
+        Text(
+            text = it,
+            style = MaterialTheme.typography.labelSmall,
+            color = c.textSecondary,
+            modifier = modifier
+                .padding(end = Spacing.lg, bottom = bottomInset + Spacing.md + 52.dp + Spacing.sm + 56.dp),
+        )
     }
 }
