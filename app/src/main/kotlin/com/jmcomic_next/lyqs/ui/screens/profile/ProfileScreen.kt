@@ -235,7 +235,10 @@ private fun AccountCard(
             }
 
             member?.let { info ->
-                if (info.coin != null) InfoRow("金币", info.coin)
+                // DTO 搬到 :shared 之后，跨模块的公开 val 属性不能再被智能转换，
+                // 必须先取到局部变量（编译器会报 SMARTCAST_IMPOSSIBLE）
+                val coin = info.coin
+                if (coin != null) InfoRow("金币", coin)
                 InfoRow("等级", info.level.toString())
                 // 官方此字段表示免广告会员；本应用本身无广告，这里只作为会员状态展示
                 InfoRow("免广告特权", if (info.adFree) "已开通" else "未开通")

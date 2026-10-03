@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "JMComic_Next"
 
 include(":app")
+include(":shared")

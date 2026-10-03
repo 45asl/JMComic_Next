@@ -212,6 +212,7 @@ dependencies {
     implementation(libs.google.material)
 
     implementation(libs.kotlinx.coroutines.android)
+    implementation(project(":shared"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.retrofit)
     implementation(libs.retrofit.serialization)
