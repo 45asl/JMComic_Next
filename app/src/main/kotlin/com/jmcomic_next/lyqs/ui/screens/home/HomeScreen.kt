@@ -1,5 +1,10 @@
 package com.jmcomic_next.lyqs.ui.screens.home
 
+import androidx.compose.ui.draw.clip
+import com.jmcomic_next.lyqs.data.prefs.ReadProgressStore
+import com.jmcomic_next.lyqs.data.SerialUpdates
+import androidx.compose.foundation.background
+import androidx.compose.ui.platform.LocalContext
 import com.jmcomic_next.lyqs.ui.LocalTagBlocker
 import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.runtime.LaunchedEffect
@@ -151,6 +156,19 @@ private fun HomeContent(
     var visibleSections by rememberSaveable { mutableIntStateOf(INITIAL_SECTIONS) }
     val sections = state.sections.filter { it.content.isNotEmpty() }.take(visibleSections)
 
+    // 1.5.3：「你追的连载里哪些更新了」。
+    //
+    // 判定用时间戳（列表项自带 update_at，本地记着"最后读它的时间"），**零额外请求**；
+    // 而且**不认分区标题、也不认分区 id** —— 哪一行里有更新的作品，那一行的标题旁就显示计数。
+    // 这样服务端改标题文案（实测就带「→右滑看更多→」）也不会让功能失效。
+    val context = LocalContext.current
+    val readProgress = remember(context) { ReadProgressStore(context) }
+    val updatedIds = remember(sections, state.latest) {
+        SerialUpdates.updated(sections.flatMap { it.content } + state.latest) { id ->
+            readProgress.lastReadAt(id)
+        }.map { it.id }.toSet()
+    }
+
     // **同一部作品出现在两个分区里时，两张卡不挂共享键。**
     //
     // 首页是唯一"一屏里有好几条列表"的页面（分类 / 搜索 / 更多 / 周刊各自只有一条列表，
@@ -193,6 +211,7 @@ private fun HomeContent(
                 SectionTitle(
                     title = section.title.orEmpty(),
                     onMore = { onOpenSection(section) },
+                    updatedCount = section.content.count { it.id in updatedIds },
                 )
             }
             item(key = "sec-${section.id}-row") {
@@ -222,6 +241,7 @@ private fun HomeContent(
                             } else {
                                 jmComicSharedKey(comic.id)
                             },
+                            updated = comic.id in updatedIds,
                             // 被滤掉时下面的条目**平滑上移**而不是跳一下
                             modifier = Modifier.animateItem(),
                         )
@@ -311,7 +331,12 @@ private const val SECTION_STEP = 6
  * 用户能滑到的只有首页带出来的那一小段。
  */
 @Composable
-private fun SectionTitle(title: String, onMore: (() -> Unit)? = null) {
+private fun SectionTitle(
+    title: String,
+    onMore: (() -> Unit)? = null,
+    /** 这一行里"你追的、且更新了"的作品数。0 表示不显示标记。 */
+    updatedCount: Int = 0,
+) {
     val c = JmTheme.colors
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
@@ -328,6 +353,19 @@ private fun SectionTitle(title: String, onMore: (() -> Unit)? = null) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        if (updatedCount > 0) {
+            // 只在**真的有**更新时才出现：没有更新的日子这一行保持干净，
+            // 否则每天都挂着一个「0 部更新」，提示很快就没人看了
+            Text(
+                text = "你追的 $updatedCount 部有更新",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.textOnAccent,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(Radius.pill))
+                    .background(c.accent)
+                    .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+            )
+        }
         if (onMore != null) {
             // 玻璃小胶囊而不是裸文字按钮：与卡片同一套表面语言，点击区域也更大
             GlassSurface(

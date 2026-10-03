@@ -1,5 +1,13 @@
 package com.jmcomic_next.lyqs.ui.screens.profile
 
+import com.jmcomic_next.lyqs.data.prefs.AppPrefs
+import com.jmcomic_next.lyqs.data.SerialNotify
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalContext
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.content.pm.PackageManager
+import android.Manifest
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
@@ -422,6 +430,52 @@ private fun AppearanceCard(
                 )
             }
             Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
+        }
+
+        // ---- 1.5.3 连载更新提醒：**可选、默认关** ----
+        //
+        // 开关状态直接读写 prefs（而不是像 uiOptions 那样从上层传下来）：
+        // 它只影响这一个后台闹钟，不参与主题/界面组合，多绕三层参数不值得。
+        val notifyContext = LocalContext.current
+        val notifyPrefs = remember(notifyContext) { AppPrefs(notifyContext) }
+        var serialNotify by remember { mutableStateOf(notifyPrefs.serialNotify) }
+        val askNotifyPermission = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) { granted ->
+            // 用户拒绝权限时**不把开关打开**：否则会出现"开关是开的、但从来不响"，
+            // 那种状态比干脆给不了这个功能更让人困惑
+            serialNotify = granted
+            notifyPrefs.serialNotify = granted
+            if (granted) SerialNotify.enable(notifyContext) else SerialNotify.disable(notifyContext)
+        }
+
+        SettingCard(title = "连载更新提醒") {
+            OptionSwitch(
+                title = "你追的连载更新时通知我",
+                desc = "每半天左右让系统挑个合适时机检查一次，有变化才提醒；同一批更新只提醒一次。" +
+                    "只用连载列表和你本地的阅读时间，不上传你在看什么。默认关闭。",
+                checked = serialNotify,
+                onCheckedChange = { want ->
+                    val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(
+                            notifyContext,
+                            Manifest.permission.POST_NOTIFICATIONS,
+                        ) != PackageManager.PERMISSION_GRANTED
+                    when {
+                        !want -> {
+                            serialNotify = false
+                            notifyPrefs.serialNotify = false
+                            SerialNotify.disable(notifyContext)
+                        }
+                        needsPermission -> askNotifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        else -> {
+                            serialNotify = true
+                            notifyPrefs.serialNotify = true
+                            SerialNotify.enable(notifyContext)
+                        }
+                    }
+                },
+            )
         }
 
         // ---- 1.4.0 的五个可选项：默认全关，升级不动任何人的界面 ----

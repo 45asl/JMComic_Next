@@ -74,6 +74,12 @@ fun ComicCard(
      * 见 [com.jmcomic_next.lyqs.ui.jmSharedElement]。
      */
     sharedKey: String? = null,
+    /**
+     * 你追的这部**在我上次读过之后又更新了**（1.5.3）。
+     * 判定见 [com.jmcomic_next.lyqs.data.SerialUpdates] —— 比时间戳，零额外请求。
+     * 默认 false：不影响任何现有调用点。
+     */
+    updated: Boolean = false,
 ) {
     val c = JmTheme.colors
     Column(
@@ -84,15 +90,32 @@ fun ComicCard(
             .padding(bottom = Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Cover(
-            url = coverUrl,
-            contentDescription = item.name,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(COVER_RATIO)
-                .jmSharedElement(sharedKey)
-                .clip(jmShape(Radius.lg)),
-        )
+        // 封面外面套一层 Box：更新标记要压在封面上，而不是把封面往下挤
+        Box {
+            Cover(
+                url = coverUrl,
+                contentDescription = item.name,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(COVER_RATIO)
+                    .jmSharedElement(sharedKey)
+                    .clip(jmShape(Radius.lg)),
+            )
+            if (updated) {
+                // 角标放在左上：右下角是阅读进度的常见位置，且左上离封面主体最远、最不挡画面
+                Text(
+                    text = "更新",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.textOnAccent,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(Spacing.xs)
+                        .clip(RoundedCornerShape(Radius.sm))
+                        .background(c.accent)
+                        .padding(horizontal = Spacing.xs, vertical = 2.dp),
+                )
+            }
+        }
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(Spacing.xxs),

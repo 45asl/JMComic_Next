@@ -80,6 +80,21 @@ class AppPrefs(context: Context) {
         get() = sp.getBoolean(KEY_PREDICTIVE_BACK, false)
         set(value) = sp.edit { putBoolean(KEY_PREDICTIVE_BACK, value) }
 
+    /**
+     * 连载更新提醒（1.5.3）：**可选、默认关**。
+     *
+     * 打开后每半天左右让系统挑个合适时机检查一次"你追的有没有更新"，
+     * 有变化才发一条通知（指纹去重，见 [com.jmcomic_next.lyqs.data.SerialNotify]）。
+     */
+    var serialNotify: Boolean
+        get() = sp.getBoolean(KEY_SERIAL_NOTIFY, false)
+        set(value) = sp.edit { putBoolean(KEY_SERIAL_NOTIFY, value) }
+
+    /** 上次通知过的那批更新的指纹；用来避免同一条更新被反复通知。 */
+    var serialNotifySeen: String?
+        get() = sp.getString(KEY_SERIAL_NOTIFY_SEEN, null)
+        set(value) = sp.edit { putString(KEY_SERIAL_NOTIFY_SEEN, value) }
+
     /** 动效性格：标准 / Plasma。 */
     var motionStyle: MotionStyle
         get() = MotionStyle.fromName(sp.getString(KEY_MOTION_STYLE, null))
@@ -155,6 +170,8 @@ class AppPrefs(context: Context) {
         const val KEY_ULTRA_TRANSLUCENT = "ultra_translucent"
         const val KEY_PREDICTIVE_BACK = "predictive_back"
         const val KEY_MOTION_STYLE = "motion_style"
+        const val KEY_SERIAL_NOTIFY = "serial_notify"
+        const val KEY_SERIAL_NOTIFY_SEEN = "serial_notify_seen"
         const val KEY_READER_MODE = "reader_mode"
         const val KEY_SEARCH_HISTORY = "search_history"
         const val SEARCH_HISTORY_LIMIT = 20
