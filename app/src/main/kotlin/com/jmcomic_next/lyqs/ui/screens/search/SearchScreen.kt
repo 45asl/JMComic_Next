@@ -175,6 +175,30 @@ class SearchViewModel(
         }
     }
 
+    /** 换一批随机推荐（1.5.5）：重新拉一次，失败保持原样。 */
+    fun shuffleRecommend() = loadRecommend()
+
+    /**
+     * 随手抽一本（1.5.5）。
+     *
+     * **重新拉一次再抽**，而不是从当前这一屏里挑：那一屏只有十几条，
+     * 反复点会一直看到同样几本，和"随机"的预期不符。
+     * 抽不到时给一句提示，而不是静默什么都不做 —— 用户会以为按钮坏了。
+     */
+    fun openRandomOne(onOpen: (String) -> Unit) {
+        viewModelScope.launch {
+            val item = runCatching {
+                repo.bootstrap()
+                repo.randomRecommend()
+            }.getOrDefault(emptyList()).randomOrNull()
+            if (item == null) {
+                _state.update { it.copy(hint = "随机本子没拿到，稍后再试") }
+            } else {
+                onOpen(item.id)
+            }
+        }
+    }
+
     fun clearHistory() {
         prefs.clearSearchHistory()
         _state.update { it.copy(history = emptyList()) }

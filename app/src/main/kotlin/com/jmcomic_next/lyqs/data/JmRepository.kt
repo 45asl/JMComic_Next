@@ -3,7 +3,7 @@ package com.jmcomic_next.lyqs.data
 import com.jmcomic_next.lyqs.data.remote.dto.DailyHistory
 import com.jmcomic_next.lyqs.data.remote.dto.DailyHistoryOptions
 import com.jmcomic_next.lyqs.data.remote.dto.NotificationUnread
-import com.jmcomic_next.lyqs.data.remote.dto.NotificationPayload
+import com.jmcomic_next.lyqs.data.remote.dto.NotificationPage
 import com.jmcomic_next.lyqs.data.remote.dto.DailyCheckResult
 import com.jmcomic_next.lyqs.data.remote.dto.DailyPayload
 import com.jmcomic_next.lyqs.data.crypto.JmCrypto
@@ -731,16 +731,19 @@ class JmRepository(
     suspend fun notifications(
         type: String = "all",
         page: Int = 1,
-    ): NotificationPayload = remote.get(
-        JmPaths.NOTIFICATIONS,
-        NotificationPayload.serializer(),
-        mapOf("type" to type, "page" to page.toString()),
+    ): NotificationPage = NotificationPage.from(
+        // 先取 JsonElement 再解释：这个接口的 data 有时是裸数组、有时是 {list,total}，
+        // 直接按对象反序列化会在裸数组上解析失败（官方源码两种都兜）
+        remote.get(
+            JmPaths.NOTIFICATIONS,
+            JsonElement.serializer(),
+            mapOf("type" to type, "page" to page.toString()),
+        ),
     )
 
     /** 未读通知数量。拉它就能做角标，不需要任何后台任务。 */
-    suspend fun notificationsUnread(): NotificationUnread = remote.get(
-        JmPaths.NOTIFICATIONS_UNREAD,
-        NotificationUnread.serializer(),
+    suspend fun notificationsUnread(): NotificationUnread = NotificationUnread.from(
+        remote.get(JmPaths.NOTIFICATIONS_UNREAD, JsonElement.serializer()),
     )
 
     /** 标记通知已读/未读（POST `{id, read}`）。 */

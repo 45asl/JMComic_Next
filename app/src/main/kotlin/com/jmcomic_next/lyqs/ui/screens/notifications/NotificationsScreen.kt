@@ -79,7 +79,7 @@ fun NotificationsScreen(
             .onSuccess { payload ->
                 // 第一页替换、后续追加：翻页时不能把已读状态丢掉
                 items_ = if (page == 1) payload.list else items_ + payload.list
-                total = payload.totalCount
+                total = payload.total
             }
             .onFailure {
                 // 只有第一页失败才报错；追加失败时保留已显示的内容，不把整屏清掉

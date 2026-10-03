@@ -2,10 +2,12 @@ package com.jmcomic_next.lyqs.data.remote.dto
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -79,36 +81,73 @@ data class FollowedUpdate(
     val updateDateText: String? get() = updateDate.asText()
 }
 
-@Serializable
-data class NotificationPayload(
+/**
+ * 一页通知。**不是**直接反序列化出来的 —— `data` 的形态会变，
+ * 由 [from] 按官方源码那两条分支解释：
+ *
+ * ```ts
+ * const list = Array.isArray(data) ? data : data?.list ?? [];
+ * const total = Array.isArray(data) ? 0 : Number(data?.total) || 0;
+ * ```
+ *
+ * 这就是"仍然解析失败"的根因：服务端**有时给裸数组**（与 `promote` 同形），
+ * 而我最初只按 `{list, total}` 对象解 —— 给数组时整条响应就炸了。
+ */
+data class NotificationPage(
     val list: List<NotificationItem> = emptyList(),
-    val total: JsonElement? = null,
+    val total: Int = 0,
 ) {
-    val totalCount: Int get() = total.asInt() ?: list.size
+    companion object {
+        private val lenient = Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            coerceInputValues = true
+            explicitNulls = false
+        }
+
+        fun from(element: JsonElement?): NotificationPage = when (element) {
+            null -> NotificationPage()
+            // 裸数组：整段就是列表，没有总数（与源码一致）
+            is JsonArray -> NotificationPage(element.mapNotNull(::item))
+            is JsonObject -> NotificationPage(
+                list = (element["list"] as? JsonArray)?.mapNotNull(::item) ?: emptyList(),
+                total = element["total"].asInt() ?: 0,
+            )
+            else -> NotificationPage()
+        }
+
+        /** 单条坏数据只丢它自己，不牵连整页 —— 列表接口尤其该这样。 */
+        private fun item(element: JsonElement): NotificationItem? =
+            runCatching { lenient.decodeFromJsonElement(NotificationItem.serializer(), element) }
+                .getOrNull()
+    }
 }
 
 /**
- * 未读数量。
- *
- * `data` 既可能是**数字**（未读总数）也可能是一个**对象**（按类型分），
- * 所以这里整个收成 [JsonElement]，两种形态都能读出值：
- * 是数字就直接当总数；是对象就取 `all`（缺了就用 `comic_follow + site_notice` 兜）。
+ * 未读数量。`data` **既可能是数字**（未读总数）**也可能是对象**（按类型分），
+ * 所以整段收成 [JsonElement] 再解释。
  */
-@Serializable
 data class NotificationUnread(
-    val data: JsonElement? = null,
+    val total: Int = 0,
+    private val counts: Map<String, Int> = emptyMap(),
 ) {
-    val total: Int get() = when (val d = data) {
-        null -> 0
-        is JsonObject -> {
-            val all = d["all"].asInt() ?: 0
-            if (all > 0) all else (d["comic_follow"].asInt() ?: 0) + (d["site_notice"].asInt() ?: 0)
-        }
-        else -> d.asInt() ?: 0
-    }
+    fun byType(type: String): Int = counts[type] ?: 0
 
-    fun byType(type: String): Int =
-        (data as? JsonObject)?.get(type).asInt() ?: 0
+    companion object {
+        fun from(element: JsonElement?): NotificationUnread = when (element) {
+            null -> NotificationUnread()
+            is JsonObject -> {
+                val counts = element.mapNotNull { (k, v) -> v.asInt()?.let { k to it } }.toMap()
+                val all = counts["all"] ?: 0
+                // 没有 all 时用分项相加兜底（源码里 unreadCount 与 unread[type] 是两个数）
+                NotificationUnread(
+                    total = if (all > 0) all else counts.values.sum(),
+                    counts = counts,
+                )
+            }
+            else -> NotificationUnread(total = element.asInt() ?: 0)
+        }
+    }
 }
 
 /* ---- 取值兜底：类型不保证，读不出来一律当"没有"，绝不抛 ---- */
