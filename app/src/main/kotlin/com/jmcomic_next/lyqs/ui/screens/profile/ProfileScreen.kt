@@ -183,7 +183,8 @@ fun ProfileScreen(
                     onUiOptionsChange = onUiOptionsChange,
                 )
             }
-            item { WallpaperCard() }
+            // lite 去掉了全部壁纸与模糊功能，这一整张卡就不该出现
+            if (!LiteFeatures.ENABLED) item { WallpaperCard() }
             item { BlockCard(onOpenBlock) }
             item { ReadingCard(readerMode, onReaderModeChange) }
             item { PrivacyCard() }
@@ -587,6 +588,8 @@ private fun AppearanceCard(
             onCheckedChange = { onUiOptionsChange(uiOptions.copy(predictiveBack = it)) },
         )
 
+        if (!LiteFeatures.ENABLED) {
+        // lite 下动效性格被强制为默认（见 Theme.kt），选择器留着只会让人以为可以调
         Text(
             text = "动效",
             style = MaterialTheme.typography.bodyLarge,
@@ -612,6 +615,7 @@ private fun AppearanceCard(
                 }
             }
         }
+        }
     }
 }
 
@@ -625,6 +629,10 @@ private fun OptionSwitch(
     /** 这一项在当前系统上还有没有意义；false 时置灰且点不动（例如 Android 15+ 的预测性返回）。 */
     enabled: Boolean = true,
 ) {
+    // lite 下这些可选项在主题层被**强制关闭**（见 Theme.kt 的退化），
+    // 界面上就不该再摆出开关 —— 点了没有任何效果，比没有这个开关更让人困惑。
+    if (LiteFeatures.ENABLED) return
+
     val c = JmTheme.colors
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = Spacing.lg),
