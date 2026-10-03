@@ -1,5 +1,6 @@
 package com.jmcomic_next.lyqs.ui.screens.profile
 
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.runtime.produceState
 import com.jmcomic_next.lyqs.data.remote.dto.DailyPayload
@@ -163,6 +164,7 @@ fun ProfileScreen(
                     onOpenTags = onOpenTags,
                 )
             }
+            item { DailyCard(onLogin = onLogin) }
             item {
                 AppearanceCard(
                     themeStyle = themeStyle,
@@ -475,140 +477,6 @@ private fun AppearanceCard(
             }
             Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
         }
-        // ---- 1.5.4 每日签到 ----
-        //
-        // 签到需要登录（接口要 user_id），未登录时不发起任何请求，只给一句说明。
-        // 活动数据按 uid 拉取：换账号必须重新拉，否则会把上一个账号的签到状态显示出来。
-        val dailyContext = LocalContext.current
-        val auth = remember(dailyContext) {
-            (dailyContext.applicationContext as JmApp).authStore
-        }
-        val authState by auth.state.collectAsStateWithLifecycle()
-        val uid = authState.member?.uid
-        val repo = LocalRepository.current
-        val scope = rememberCoroutineScope()
-        var daily by remember { mutableStateOf<DailyPayload?>(null) }
-        var dailyLoading by remember { mutableStateOf(false) }
-        var dailyNotice by remember { mutableStateOf<String?>(null) }
-
-        LaunchedEffect(uid) {
-            daily = null
-            dailyNotice = null
-            if (uid.isNullOrBlank()) return@LaunchedEffect
-            dailyLoading = true
-            daily = runCatching { repo.daily(uid) }.getOrNull()
-            dailyLoading = false
-        }
-
-        SettingCard(title = "每日签到") {
-            when {
-                uid.isNullOrBlank() -> Text(
-                    text = "登录后可以签到。签到记录在服务端，本机不留存。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = c.textSecondary,
-                )
-
-                dailyLoading -> Text(
-                    text = "正在读取签到活动…",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = c.textSecondary,
-                )
-
-                daily == null -> Text(
-                    // 说明两种可能，而不是直接说"失败"：没有进行中的活动也会走到这里
-                    text = "没读到签到活动（可能当前没有进行中的活动，或网络不通）。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = c.textSecondary,
-                )
-
-                else -> {
-                    val d = daily!!
-                    val complete = Daily.isComplete(d.record)
-                    Text(
-                        text = d.eventName ?: "签到活动",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = c.text,
-                        modifier = Modifier.padding(top = Spacing.sm),
-                    )
-                    Text(
-                        text = "已签 ${Daily.signedCount(d.record)} / ${Daily.totalDays(d.record)} 天",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = c.textSecondary,
-                    )
-                    // 按周铺格子：外层是周、内层是这一周的七天，与服务端返回的结构一致
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                        d.record.forEach { week ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                                week.forEach { day ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(30.dp)
-                                            .clip(RoundedCornerShape(Radius.sm))
-                                            .background(if (day.signed) c.accent else c.surface2)
-                                            .semantics {
-                                                // 无障碍读到的应是"几号、签没签"，而不是一个空方块
-                                                contentDescription = buildString {
-                                                    dayOfMonth(day.date)?.let { append("${it}号") }
-                                                    append(if (day.signed) "，已签到" else "，未签到")
-                                                }
-                                            },
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        // 只靠颜色用户看不出哪格是哪天，所以写上"几号"
-                                        dayOfMonth(day.date)?.let { n ->
-                                            Text(
-                                                text = n.toString(),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = if (day.signed) c.textOnAccent else c.textSecondary,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                        modifier = Modifier.padding(top = Spacing.sm),
-                    ) {
-                        Button(
-                            // 已经签完就禁用；没有 daily_id 时也禁用（服务端没给可打卡的活动）
-                            enabled = !complete && !d.dailyId.isNullOrBlank(),
-                            onClick = {
-                                val id = d.dailyId ?: return@Button
-                                scope.launch {
-                                    dailyNotice = runCatching { repo.dailyCheck(uid, id) }
-                                        .fold(
-                                            onSuccess = { res ->
-                                                if (Daily.isAlreadyChecked(res.msg)) {
-                                                    "今天已经签过了"
-                                                } else {
-                                                    // 打完卡立刻重拉，让格子上的状态与按钮跟着变
-                                                    daily = runCatching { repo.daily(uid) }.getOrNull()
-                                                    res.msg?.takeIf { it.isNotBlank() } ?: "签到成功"
-                                                }
-                                            },
-                                            onFailure = { "签到失败，稍后再试" },
-                                        )
-                                }
-                            },
-                        ) { Text(if (complete) "本期已签完" else "签到") }
-
-                        DailyHistorySection(repo = repo, uid = uid)
-
-                        dailyNotice?.let {
-                            Text(
-                                text = it,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = c.textSecondary,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
         // ---- 1.5.3 连载更新提醒：**可选、默认关** ----
         //
         // 开关状态直接读写 prefs（而不是像 uiOptions 那样从上层传下来）：
@@ -1219,3 +1087,155 @@ private fun dayOfMonth(date: String?): Int? = date
     ?.trimStart('0')
     ?.takeIf { it.isNotEmpty() }
     ?.toIntOrNull()
+
+/**
+ * 每日签到（1.5.4）。
+ *
+ * 放在**账号卡正下方**：它需要登录、读到的是这个账号的签到状态，和上面的账号信息是一件事。
+ * 之前它被错插在「外观」卡内部，所以位置不对。
+ *
+ * 未登录时**不显示签到界面**（日历与进度都没有意义），只留一句「登录后再签到」并可点击去登录。
+ */
+@Composable
+private fun DailyCard(onLogin: () -> Unit) {
+    val c = JmTheme.colors
+    // ---- 1.5.4 每日签到 ----
+    //
+    // 签到需要登录（接口要 user_id），未登录时不发起任何请求，只给一句说明。
+    // 活动数据按 uid 拉取：换账号必须重新拉，否则会把上一个账号的签到状态显示出来。
+    val dailyContext = LocalContext.current
+    val auth = remember(dailyContext) {
+        (dailyContext.applicationContext as JmApp).authStore
+    }
+    val authState by auth.state.collectAsStateWithLifecycle()
+    val uid = authState.member?.uid
+    val repo = LocalRepository.current
+    val scope = rememberCoroutineScope()
+    var daily by remember { mutableStateOf<DailyPayload?>(null) }
+    var dailyLoading by remember { mutableStateOf(false) }
+    var dailyNotice by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(uid) {
+        daily = null
+        dailyNotice = null
+        if (uid.isNullOrBlank()) return@LaunchedEffect
+        dailyLoading = true
+        daily = runCatching { repo.daily(uid) }.getOrNull()
+        dailyLoading = false
+    }
+
+    SettingCard(title = "每日签到") {
+        when {
+            uid.isNullOrBlank() -> Text(
+                // 未登录不摆出签到界面（日历与进度都没有意义），只留一个能点的入口：
+                // 说明这个功能存在，以及怎么用上它
+                text = "登录后再签到",
+                style = MaterialTheme.typography.bodyMedium,
+                color = c.accent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onLogin)
+                    .padding(vertical = Spacing.xs),
+            )
+
+            dailyLoading -> Text(
+                text = "正在读取签到活动…",
+                style = MaterialTheme.typography.bodySmall,
+                color = c.textSecondary,
+            )
+
+            daily == null -> Text(
+                // 说明两种可能，而不是直接说"失败"：没有进行中的活动也会走到这里
+                text = "没读到签到活动（可能当前没有进行中的活动，或网络不通）。",
+                style = MaterialTheme.typography.bodySmall,
+                color = c.textSecondary,
+            )
+
+            else -> {
+                val d = daily!!
+                val complete = Daily.isComplete(d.record)
+                Text(
+                    text = d.eventName ?: "签到活动",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = c.text,
+                    modifier = Modifier.padding(top = Spacing.sm),
+                )
+                Text(
+                    text = "已签 ${Daily.signedCount(d.record)} / ${Daily.totalDays(d.record)} 天",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.textSecondary,
+                )
+                // 按周铺格子：外层是周、内层是这一周的七天，与服务端返回的结构一致
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    d.record.forEach { week ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                            week.forEach { day ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .clip(RoundedCornerShape(Radius.sm))
+                                        .background(if (day.signed) c.accent else c.surface2)
+                                        .semantics {
+                                            // 无障碍读到的应是"几号、签没签"，而不是一个空方块
+                                            contentDescription = buildString {
+                                                dayOfMonth(day.date)?.let { append("${it}号") }
+                                                append(if (day.signed) "，已签到" else "，未签到")
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    // 只靠颜色用户看不出哪格是哪天，所以写上"几号"
+                                    dayOfMonth(day.date)?.let { n ->
+                                        Text(
+                                            text = n.toString(),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (day.signed) c.textOnAccent else c.textSecondary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    modifier = Modifier.padding(top = Spacing.sm),
+                ) {
+                    Button(
+                        // 已经签完就禁用；没有 daily_id 时也禁用（服务端没给可打卡的活动）
+                        enabled = !complete && !d.dailyId.isNullOrBlank(),
+                        onClick = {
+                            val id = d.dailyId ?: return@Button
+                            scope.launch {
+                                dailyNotice = runCatching { repo.dailyCheck(uid, id) }
+                                    .fold(
+                                        onSuccess = { res ->
+                                            if (Daily.isAlreadyChecked(res.msg)) {
+                                                "今天已经签过了"
+                                            } else {
+                                                // 打完卡立刻重拉，让格子上的状态与按钮跟着变
+                                                daily = runCatching { repo.daily(uid) }.getOrNull()
+                                                res.msg?.takeIf { it.isNotBlank() } ?: "签到成功"
+                                            }
+                                        },
+                                        onFailure = { "签到失败，稍后再试" },
+                                    )
+                            }
+                        },
+                    ) { Text(if (complete) "本期已签完" else "签到") }
+
+                    DailyHistorySection(repo = repo, uid = uid)
+
+                    dailyNotice?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = c.textSecondary,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
